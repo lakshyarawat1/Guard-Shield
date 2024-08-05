@@ -8,21 +8,15 @@ import {
 } from "@radix-ui/react-dropdown-menu";
 import { DropdownMenuContent, DropdownMenuItem } from "../ui/dropdown-menu";
 import { Separator } from "../ui/separator";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "../ui/accordion";
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background h-full ">
       <div className="container flex h-14 max-w-screen-2xl items-center">
         <div className="mr-4 flex h-full items-center">
           <Link href="/home" className="mr-6 flex items-center space-x-2">
             <Shield />
-            <span className="font-bold inline-block">Guard Shield</span>
+            <span className=" inline-block">Guard Shield</span>
           </Link>
           <Separator orientation="vertical" className="py-2 mx-2" />
           <DropdownMenu>

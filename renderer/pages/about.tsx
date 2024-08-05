@@ -3,7 +3,6 @@ import Head from "next/head";
 import Link from "next/link";
 import Image from "next/image";
 import { buttonVariants } from "@/components/ui/button";
-import { SiteHeader } from "@/components/site-header";
 
 export default function AboutPage() {
     return (
@@ -14,7 +13,6 @@ export default function AboutPage() {
 
             <div className="relative flex min-h-screen flex-col bg-background">
                 <div className="w-full h-screen flex flex-col items-center justify-center px-4">
-                    <SiteHeader />
 
                     <div className="flex-1 flex flex-col justify-center items-center w-full space-y-8">
                         <div>
