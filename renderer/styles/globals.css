@@ -11,6 +11,20 @@
   font-family: "Geist";
 }
 
+.bar-options {
+  display: flex;
+  /* justify-content: space-between; */
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.bar-options:hover {
+  background-color: slategrey;
+  border-radius: 1rem;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

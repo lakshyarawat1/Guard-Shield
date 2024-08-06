@@ -83,25 +83,17 @@ const Infobar = (props: Props) => {
               Logs <MenubarShortcut>⌘L</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>
-              Contact Us
-            </MenubarItem>
+            <MenubarItem>Contact Us</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
-          <MenubarTrigger>
-            Customize
-          </MenubarTrigger>
+          <MenubarTrigger>Customize</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>
-              Font Size
-            </MenubarItem>
+            <MenubarItem>Font Size</MenubarItem>
             <MenubarItem>
               Add Member<MenubarShortcut>⌘+</MenubarShortcut>
             </MenubarItem>
-            <MenubarItem disabled>
-              Sync Changes
-            </MenubarItem>
+            <MenubarItem disabled>Sync Changes</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
       </Menubar>

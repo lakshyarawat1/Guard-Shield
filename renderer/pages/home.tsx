@@ -2,6 +2,7 @@ import React from "react";
 import Head from "next/head";
 import { Header } from "@/components/global/Header";
 import Infobar from "@/components/global/Infobar";
+import Sidebar from "@/components/global/Sidebar";
 
 export default function HomePage() {
   return (
@@ -15,6 +16,7 @@ export default function HomePage() {
           <Header />
         </div>
         <Infobar />
+        <Sidebar />
       </div>
     </React.Fragment>
   );
