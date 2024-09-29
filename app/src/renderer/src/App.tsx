@@ -20,9 +20,10 @@ import Sidebar from "./components/Sidebar";
 import Monitoring from "./components/Monitoring";
 import io from "socket.io-client";
 import { PacketType } from "./types/dataTypes";
-import { Info } from "lucide-react";
+import { ArrowLeft, ArrowRight, Info } from "lucide-react";
 import { protocolNames } from "./constants/constants";
 import { Badge } from "../../components/ui/badge";
+import { ScrollArea } from "../../components/ui/scroll-area";
 
 declare global {
   interface Window {
@@ -35,9 +36,6 @@ declare global {
 }
 
 function App(): JSX.Element {
-
-
-
   function extractFields(packetStr) {
     const fields = {};
 
@@ -55,19 +53,60 @@ function App(): JSX.Element {
       "tcp.srcport": /"tcp\.srcport":\s*\[\s*"([^"]+)"\s*\]/,
       "tcp.dstport": /"tcp\.dstport":\s*\[\s*"([^"]+)"\s*\]/,
       "tcp.flags": /"tcp\.flags":\s*\[\s*"([^"]+)"\s*\]/,
+      "udp.srcport": /"udp\.srcport":\s*\[\s*"([^"]+)"\s*\]/,
+      "udp.dstport": /"udp\.dstport":\s*\[\s*"([^"]+)"\s*\]/,
+      "_ws.col.info": /"_ws\.col\.info":\s*\[\s*"([^"]+)"\s*\]/,
+      "eth.src": /"eth\.src":\s*\[\s*"([^"]+)"\s*\]/,
+      "eth.dst": /"eth\.dst":\s*\[\s*"([^"]+)"\s*\]/,
     };
+
+    // Function to format the date in dd/mm/yyyy format
+    function formatDateTime(dateTimeStr) {
+
+      const cleanedDateTimeStr = dateTimeStr
+        .replace(/(India Standard Time|IST)/, "")
+        .trim();
+      const dateObj = new Date(cleanedDateTimeStr);
+      console.log(dateObj)
+
+      if (isNaN(dateObj.getTime())) {
+        return { date: null, time: null }; // Return null if date is invalid
+      }
+
+      const day = ("0" + dateObj.getDate()).slice(-2);
+      const month = ("0" + (dateObj.getMonth() + 1)).slice(-2);
+      const year = dateObj.getFullYear();
+      const time = dateObj.toTimeString().split(" ")[0]; // Get time part (HH:MM:SS)
+
+      console.log(day, month, year, time);
+
+      return {
+        date: `${day}/${month}/${year}`,
+        time: time,
+      };
+    }
 
     // Iterate through each field regex and apply it to extract values
     for (let field in fieldRegex) {
       const match = cleanStr.match(fieldRegex[field]);
       if (match) {
-        fields[field] = match[1]; // Store the matched value
+        if (field === "frame.time") {
+          const formattedDateTime = formatDateTime(match[1]);
+          fields["frame.time"] = formattedDateTime;
+        } else {
+          fields[field] = match[1]; // Store the matched value
+        }
+      } else {
+        fields[field] = null; // Assign default value if field is not found
       }
     }
 
+    // Additional checks for essential fields, log an error if not present (optional)
+    if (!fields["ip.src"] || !fields["ip.dst"]) {
+      console.error("Missing critical IP address information.");
+    }
     return fields;
   }
-
 
   function replaceDotsInKeys(obj) {
     const newObj = {};
@@ -96,19 +135,24 @@ function App(): JSX.Element {
 
     socket.on("data", function (data) {
       if (data) {
-        console.log(data, typeof data);
         const extractedFields = extractFields(data);
+        console.log(extractedFields);
+
         const newPackets: PacketType = {
           frame_len: "",
-          frame_time: "",
+          frame_time: {
+            date: "",
+            time: "",
+          },
           ip_src: "",
           ip_dst: "",
           tcp_srcport: "",
           tcp_dstport: "",
           ip_proto: "",
+          _ws_col_info: "",
+
           ...replaceDotsInKeys(extractedFields),
         };
-        console.log(newPackets);
         setPackets((prevPackets) => {
           // Only keep the last 100 packets to avoid performance issues
           if (prevPackets.length >= 100) {
@@ -120,11 +164,12 @@ function App(): JSX.Element {
         console.log("no data");
       }
     });
-    console.log(socket);
     return () => {
       socket.disconnect();
     };
   }, []);
+
+  console.log(packets);
 
   return (
     <div className={` min-h-screen  flex-col bg-background`}>
@@ -146,50 +191,58 @@ function App(): JSX.Element {
               <Monitoring />
             </TabsContent>
             <TabsContent value="Packet Query">
-              <Table>
-                <TableHeader>
-                  <TableRow className="">
-                    <TableHead className="w-[8%] text-center">
-                      Protocol
-                    </TableHead>
-                    <TableHead className="w-[12%] text-center">
-                      Source IP
-                    </TableHead>
-                    <TableHead className="w-[13%] text-center">
-                      Destination IP
-                    </TableHead>
-                    <TableHead className="w-[25%] text-center">
-                      Timestamp
-                    </TableHead>
-                    <TableHead className="w-[12%] text-center">
-                      TCP Source Port
-                    </TableHead>
+              <ScrollArea className="h-[33rem]">
+                <Table className="">
+                  <TableHeader>
+                    <TableRow className="">
+                      <TableHead className="w-[8%] text-center">
+                        Protocol
+                      </TableHead>
+                      <TableHead className="w-[12%] text-center">
+                        Source IP
+                      </TableHead>
+                      <TableHead className="w-[13%] text-center">
+                        Destination IP
+                      </TableHead>
+                      <TableHead className="w-[25%] text-center">
+                        Timestamp
+                      </TableHead>
+                      <TableHead className="w-[12%] text-center">
+                        TCP Source Port
+                      </TableHead>
 
-                    <TableHead className="w-[12%] text-center">
-                      TCP Destination Port
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {packets.map((packet) => {
-                    return (
-                      <TableRow
-                        key={packet.ip_src}
-                        className="text-muted-foreground"
-                      >
-                        <TableCell>
-                          <Badge>{protocolNames[packet.ip_proto]}</Badge>
-                        </TableCell>
-                        <TableCell>{packet.ip_src}</TableCell>
-                        <TableCell>{packet.ip_dst}</TableCell>
-                        <TableCell>{packet.frame_time}</TableCell>
-                        <TableCell>{packet.tcp_srcport}</TableCell>
-                        <TableCell>{packet.tcp_dstport}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                      <TableHead className="w-[12%] text-center">
+                        TCP Destination Port
+                      </TableHead>
+                      <TableHead className="w-[18%]">Info</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="">
+                    {packets.map((packet) => {
+                      return (
+                        <TableRow
+                          key={packet.ip_src}
+                          className="text-muted-foreground"
+                        >
+                          <TableCell>
+                            <Badge>{protocolNames[packet.ip_proto]}</Badge>
+                          </TableCell>
+                          <TableCell>{packet.ip_src}</TableCell>
+                          <TableCell>{packet.ip_dst}</TableCell>
+                          <TableCell>
+                            {packet.frame_time.date} {packet.frame_time.time}
+                          </TableCell>
+                          <TableCell className="flex gap-2 items-center justify-center">
+                            {packet.tcp_srcport}
+                          </TableCell>
+                          <TableCell>{packet.tcp_dstport}</TableCell>
+                          <TableCell className="w-[14rem]">{packet._ws_col_info}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </div>
