@@ -1,28 +1,65 @@
 <mxfile host="65bd71144e">
-    <diagram id="RMuZ1mjswI28hwQgSMnG" name="Page-1">
-        <mxGraphModel dx="627" dy="291" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <diagram id="f1a2b3c4" name="architecture">
+        <mxGraphModel dx="475" dy="396" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="2" value="Electron App ( Client )&amp;nbsp;" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
-                    <mxGeometry x="240" y="300" width="110" height="110" as="geometry"/>
+                <mxCell id="kAc0SyUN_WMn847Gesce-4" value="&lt;b&gt;&lt;font style=&quot;font-size: 15px;&quot;&gt;Data Ingestion Layer&lt;/font&gt;&lt;/b&gt;&lt;div&gt;(Captures raw packets, buffers them and forwards to downstream processors )&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Packet capture : Npcap&amp;nbsp;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="80" width="540" height="260" as="geometry"/>
                 </mxCell>
-                <mxCell id="3" value="Networking Server ( Node JS )" style="whiteSpace=wrap;html=1;aspect=fixed;fontSize=6;" parent="1" vertex="1">
-                    <mxGeometry x="560" y="305" width="100" height="100" as="geometry"/>
+                <mxCell id="kAc0SyUN_WMn847Gesce-8" value="&lt;div&gt;&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;Stream processing and feature extraction&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;Apache Flink, for processing kafka packets&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;strong style=&quot;background-color: transparent;&quot;&gt;&lt;br&gt;&lt;/strong&gt;&lt;/div&gt;&lt;div&gt;&lt;strong style=&quot;background-color: transparent;&quot;&gt;Preprocessing Microservices&lt;/strong&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;Normalize and enrich data (geo-IP lookup, DNS resolution)&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;Output feature vectors for downstream detection&amp;nbsp;&lt;/span&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="290" width="540" height="140" as="geometry"/>
                 </mxCell>
-                <mxCell id="7" value="" style="endArrow=classic;startArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="2" target="3" edge="1">
+                <mxCell id="kAc0SyUN_WMn847Gesce-9" value="&lt;div&gt;&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;Detection Layer&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;strong style=&quot;background-color: transparent;&quot;&gt;&lt;br&gt;&lt;/strong&gt;&lt;/div&gt;&lt;div&gt;&lt;strong style=&quot;background-color: transparent;&quot;&gt;Signature-Based Service&lt;/strong&gt;&lt;/div&gt;&lt;li&gt;&lt;ul&gt;&lt;br&gt;• Containerized Suricata/YARA engine for known threat patterns&lt;br&gt;&lt;br&gt;• Auto-update rule feeds via API&lt;br&gt;&lt;li&gt;&lt;strong&gt;Anomaly-Based Service&lt;/strong&gt;&lt;br&gt;&lt;br&gt;• TensorFlow Serving or ONNX Runtime hosting Isolation Forests, Autoencoders&lt;br&gt;&lt;br&gt;• Model versioning and canary deployments&lt;/li&gt;&lt;/ul&gt;&lt;/li&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;fillColor=default;" parent="1" vertex="1">
+                    <mxGeometry x="73.75" y="450" width="540" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-10" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="kAc0SyUN_WMn847Gesce-4" target="kAc0SyUN_WMn847Gesce-8" edge="1">
                     <mxGeometry width="50" height="50" relative="1" as="geometry">
-                        <mxPoint x="390" y="450" as="sourcePoint"/>
-                        <mxPoint x="440" y="400" as="targetPoint"/>
+                        <mxPoint x="180" y="420" as="sourcePoint"/>
+                        <mxPoint x="230" y="370" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="9" value="Socket IO&amp;nbsp;&lt;br&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="7" vertex="1" connectable="0">
-                    <mxGeometry x="-0.0566" y="3" relative="1" as="geometry">
-                        <mxPoint as="offset"/>
+                <mxCell id="kAc0SyUN_WMn847Gesce-13" value="" style="endArrow=classic;html=1;" parent="1" source="kAc0SyUN_WMn847Gesce-8" target="kAc0SyUN_WMn847Gesce-9" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="200" y="390" as="sourcePoint"/>
+                        <mxPoint x="250" y="340" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="10" value="TSHARK" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=none;fontSize=6;" parent="1" vertex="1">
-                    <mxGeometry x="585" y="380" width="50" height="10" as="geometry"/>
+                <mxCell id="kAc0SyUN_WMn847Gesce-14" value="&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;Alerting and Automated Response&lt;/b&gt;&lt;/span&gt;&lt;div&gt;&lt;li&gt;&lt;ul&gt;&lt;strong&gt;Event Correlation Engine&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Consumes alerts from both detection services&lt;br&gt;&lt;br/&gt;• Applies enrichment, deduplication and risk scoring&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Action Orchestrator&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Triggers firewall rules, endpoint quarantine or ticket creation&lt;br&gt;&lt;br/&gt;• Integrates with SOAR platforms or custom webhooks&lt;/li&gt;&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Notification Service&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Email/SMS/Slack/Push notifications configurable per tenan&lt;/li&gt;&lt;br/&gt;&lt;/ul&gt;&lt;/li&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;fillColor=default;" parent="1" vertex="1">
+                    <mxGeometry x="73.75" y="720" width="540" height="370" as="geometry"/>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-15" value="" style="endArrow=classic;html=1;" parent="1" source="kAc0SyUN_WMn847Gesce-9" target="kAc0SyUN_WMn847Gesce-14" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="310" y="930" as="sourcePoint"/>
+                        <mxPoint x="360" y="880" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-16" value="&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;Storage and Analytics&lt;/b&gt;&lt;/span&gt;&lt;div&gt;&lt;li&gt;&lt;ul&gt;&lt;strong&gt;Hot Store&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Elasticsearch or InfluxDB for fast queries and dashboards&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Cold Store&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Object storage (S3/Blob) or HDFS for raw packet archives and logs&lt;/li&gt;&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Analytics &amp;amp; Reporting&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Periodic batch jobs for trend analysis and compliance reports&lt;/li&gt;&lt;br/&gt;&lt;/ul&gt;&lt;/li&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;fillColor=default;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="750" width="500" height="310" as="geometry"/>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-17" value="" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="kAc0SyUN_WMn847Gesce-14" target="kAc0SyUN_WMn847Gesce-16" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="890" y="960" as="sourcePoint"/>
+                        <mxPoint x="940" y="910" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-18" value="&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;API &amp;amp; Client Interface&amp;nbsp;&lt;/b&gt;&lt;/span&gt;&lt;div&gt;&lt;li&gt;&lt;ul&gt;&lt;strong&gt;Backend API Gateway&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Central entry point with load-balancing (NGINX, Istio) and WAF&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Multi-Tenant Web Portal&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• React/Vue dashboard for configuration, alerts and reports&lt;/li&gt;&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Electron Desktop App&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Local agent console for offline or on-premise deployments&lt;br&gt;&lt;br/&gt;• Syncs to cloud back-end when connectivity is available&lt;/li&gt;&lt;br/&gt;&lt;/ul&gt;&lt;/li&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;fillColor=default;" parent="1" vertex="1">
+                    <mxGeometry x="715" y="440" width="510" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-19" value="" style="endArrow=classic;html=1;exitX=0.43;exitY=0.004;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="kAc0SyUN_WMn847Gesce-16" target="kAc0SyUN_WMn847Gesce-18" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="920" y="620" as="sourcePoint"/>
+                        <mxPoint x="970" y="570" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-20" value="&lt;span style=&quot;font-size: 15px;&quot;&gt;&lt;b&gt;Infrastructure &amp;amp; DevOps Security&amp;nbsp;&lt;/b&gt;&lt;/span&gt;&lt;div&gt;&lt;li&gt;&lt;ul&gt;&lt;strong&gt;Container Orchestration&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Kubernetes on AWS/GCP/Azure for automatic scaling and high availability&lt;br/&gt;&lt;li&gt;&lt;strong&gt;CI/CD Pipeline&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Automated builds for detection rules and model retraining&lt;br&gt;&lt;br/&gt;• Canary deployments and rollback strategies&lt;/li&gt;&lt;br/&gt;&lt;li&gt;&lt;strong&gt;Observability &amp;amp; Compliance&lt;/strong&gt;&lt;br&gt;&lt;br/&gt;• Prometheus/Grafana for metrics, ELK stack for logs&lt;br&gt;&lt;br/&gt;• Audit trails, role-based access control and encrypted data at rest/in transit&lt;/li&gt;&lt;br/&gt;&lt;/ul&gt;&lt;/li&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=center;fillColor=default;" parent="1" vertex="1">
+                    <mxGeometry x="715" y="10" width="510" height="360" as="geometry"/>
+                </mxCell>
+                <mxCell id="kAc0SyUN_WMn847Gesce-21" value="" style="endArrow=classic;html=1;" parent="1" source="kAc0SyUN_WMn847Gesce-18" target="kAc0SyUN_WMn847Gesce-20" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="740" y="240" as="sourcePoint"/>
+                        <mxPoint x="790" y="190" as="targetPoint"/>
+                    </mxGeometry>
                 </mxCell>
             </root>
         </mxGraphModel>

@@ -23,7 +23,7 @@ type Props = {};
 
 const Sidebar = (props: Props) => {
   return (
-    <div className="w-[15%] border-r h-full py-4 px-3 max-h-screen overflow-hidden min-h-[41rem]">
+    <div className="min-w-[15%] border-r h-full py-4 px-3 max-h-screen overflow-hidden min-h-[41rem]">
       <Accordion type="multiple" className="w-full">
         <AccordionItem value="Threat Monitoring">
           <AccordionTrigger>Threat Monitoring</AccordionTrigger>
