@@ -7,7 +7,6 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { Separator } from "../../../components/ui/separator";
-import React from "react";
 
 export function Header() {
   return (
@@ -16,7 +15,7 @@ export function Header() {
         <div className="mr-4 flex h-full items-center">
           <a href="/home" className="mr-6 flex items-center space-x-2">
             <Shield />
-            <span className=" inline-block">Guard Shield</span>
+            <span className="inline-block">Guard Shield</span>
           </a>
           <Separator orientation="vertical" className="py-2 mx-2" />
           <DropdownMenu>

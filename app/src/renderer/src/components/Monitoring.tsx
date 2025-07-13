@@ -5,7 +5,7 @@ import {
   Legend,
   Line,
   LineChart,
-  Tooltip,
+  Tooltip as ToolTip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -19,6 +19,12 @@ import {
 } from "../../../components/ui/table";
 import { ScrollArea } from "../../../components/ui/scroll-area";
 import { Badge } from "../../../components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
 
 type Props = {};
 
@@ -132,7 +138,7 @@ const Monitoring = (props: Props) => {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="name" />
           <YAxis />
-          <Tooltip />
+          <ToolTip />
           <Legend />
           <Line type="monotone" dataKey="pv" stroke="#8884d8" />
           <Line type="monotone" dataKey="uv" stroke="#82ca9d" />
@@ -142,8 +148,19 @@ const Monitoring = (props: Props) => {
             <TableHeader>
               <TableRow>
                 <TableHead className="flex gap-3 items-center text-center">
-                  Impact Score
-                  <Info className="text-blue-500 h-4 w-4 cursor-pointer" />
+                  Impact Score{" "}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Info className="text-blue-500 h-4 w-4 cursor-pointer" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs max-w-72">
+                          Impact Score represents the calculated risk or potential effect of an intrusion attempt, based on various factors associated with each unique ID. It is distinct from Severity, which categorizes the overall threat level.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>{" "}
+                  </TooltipProvider>
                 </TableHead>
                 <TableHead>Severity</TableHead>
                 <TableHead>Port</TableHead>
@@ -155,14 +172,18 @@ const Monitoring = (props: Props) => {
                 return (
                   <TableRow key={item.ID} className="">
                     <TableCell className="font-medium w-[15%]">
-                      <Badge className={`rounded-sm px-2 text-md ${item.impact < 10 && item.impact > 8 ? "bg-red-500" : item.impact > 6 ? "bg-orange-500" : item.impact > 4 ? "bg-yellow-300" : "bg-green-500"} `}>
+                      <Badge
+                        className={`rounded-sm px-2 text-md ${item.impact < 10 && item.impact > 8 ? "bg-red-500" : item.impact > 6 ? "bg-orange-500" : item.impact > 4 ? "bg-yellow-300" : "bg-green-500"} `}
+                      >
                         {" "}
                         {item.impact}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {" "}
-                      <Badge className={`text-md  rounded-sm text-center ${item.severity === "Critical" ? "bg-red-500" : item.severity === "High" ? "bg-orange-500" : item.severity === "Medium" ? "bg-yellow-300" : "bg-green-500"} `}>
+                      <Badge
+                        className={`text-md  rounded-sm text-center ${item.severity === "Critical" ? "bg-red-500" : item.severity === "High" ? "bg-orange-500" : item.severity === "Medium" ? "bg-yellow-300" : "bg-green-500"} `}
+                      >
                         {" "}
                         {item.severity}
                       </Badge>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -22,9 +22,10 @@ import {
 type Props = {};
 
 const Sidebar = (props: Props) => {
+
   return (
     <div className="min-w-[15%] border-r h-full py-4 px-3 max-h-screen overflow-hidden min-h-[41rem]">
-      <Accordion type="multiple" className="w-full">
+      <Accordion type="single" className="w-full" collapsible >
         <AccordionItem value="Threat Monitoring">
           <AccordionTrigger>Threat Monitoring</AccordionTrigger>
           <AccordionContent className="">
