@@ -77,6 +77,13 @@ const Monitoring = (props: Props) => {
       protocol: "http",
     },
     {
+      impact: 4.7,
+      severity: "Medium",
+      ID: "12",
+      port: "80",
+      protocol: "http",
+    },
+    {
       impact: 2.7,
       severity: "Low",
       ID: "12",
@@ -148,14 +155,14 @@ const Monitoring = (props: Props) => {
                 return (
                   <TableRow key={item.ID} className="">
                     <TableCell className="font-medium w-[15%]">
-                      <Badge className={`rounded-sm px-2 text-md `}>
+                      <Badge className={`rounded-sm px-2 text-md ${item.impact < 10 && item.impact > 8 ? "bg-red-500" : item.impact > 6 ? "bg-orange-500" : item.impact > 4 ? "bg-yellow-300" : "bg-green-500"} `}>
                         {" "}
                         {item.impact}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {" "}
-                      <Badge className="text-md  rounded-sm text-center ">
+                      <Badge className={`text-md  rounded-sm text-center ${item.severity === "Critical" ? "bg-red-500" : item.severity === "High" ? "bg-orange-500" : item.severity === "Medium" ? "bg-yellow-300" : "bg-green-500"} `}>
                         {" "}
                         {item.severity}
                       </Badge>

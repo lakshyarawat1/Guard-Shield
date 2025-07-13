@@ -28,15 +28,15 @@ const Sidebar = (props: Props) => {
         <AccordionItem value="Threat Monitoring">
           <AccordionTrigger>Threat Monitoring</AccordionTrigger>
           <AccordionContent className="">
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <Radar />
               <span>IDS / IPS</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <SearchIcon />
               <span>Suspicious Traffic</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <LineChart />
               <span>Filtering and Analysis</span>
             </div>
@@ -45,15 +45,15 @@ const Sidebar = (props: Props) => {
         <AccordionItem value="Policy Management">
           <AccordionTrigger>Policy Management</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <Code2 />
               <span>Malware Prevention</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <ArrowLeftCircle />
               <span>Inbound Rules</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <ArrowRightCircle />
               <span>Outbound Rules</span>
             </div>
@@ -62,15 +62,15 @@ const Sidebar = (props: Props) => {
         <AccordionItem value="Export data">
           <AccordionTrigger>Export data</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <DatabaseBackupIcon />
               <span>Export as CSV</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <File />
               <span>Export in a file</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <Share />
               <span>Share </span>
             </div>
@@ -79,11 +79,11 @@ const Sidebar = (props: Props) => {
         <AccordionItem value="Settings">
           <AccordionTrigger>Settings</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <Settings />
               <span>General Settings</span>
             </div>
-            <div className="bar-options">
+            <div className="bar-options hover:bg-gray-200">
               <NetworkIcon />
               <span>Networking Settings</span>
             </div>

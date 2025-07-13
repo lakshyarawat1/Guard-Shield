@@ -53,25 +53,25 @@ export function Header() {
               <DropdownMenuContent className="flex flex-col">
                 <a
                   href="/profile"
-                  className="px-12 py-2 hover:bg-slate-800 rounded-lg text-center"
+                  className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center"
                 >
                   My Profile
                 </a>
                 <a
                   href="/profile"
-                  className="px-12 py-2 hover:bg-slate-800 rounded-lg text-center"
+                  className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center"
                 >
                   Configuration
                 </a>
                 <a
                   href="/profile"
-                  className="px-12 py-2 hover:bg-slate-800 rounded-lg text-center"
+                  className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center"
                 >
                   Settings
                 </a>
                 <a
                   href="/profile"
-                  className="px-12 py-2 hover:bg-slate-800 rounded-lg text-center"
+                  className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center"
                 >
                   Contact Us
                 </a>

@@ -1,7 +1,7 @@
 import * as React from "react";
 import "./index.css";
-import { Header } from "./components/Header";
-import Infobar from "./components/Infobar";
+import { Header } from "../src/components/Header";
+import Infobar from "../src/components/Infobar";
 import {
   Tabs,
   TabsContent,
@@ -16,12 +16,12 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import Sidebar from "./components/Sidebar";
-import Monitoring from "./components/Monitoring";
+import Sidebar from "../src/components/Sidebar";
+import Monitoring from "../src/components/Monitoring";
 import io from "socket.io-client";
-import { PacketType } from "./types/dataTypes";
+import { PacketType } from "../src/types/dataTypes";
 import { ArrowLeft, ArrowRight, Info } from "lucide-react";
-import { protocolNames } from "./constants/constants";
+import { protocolNames } from "../src/constants/constants";
 import { Badge } from "../../components/ui/badge";
 import { ScrollArea } from "../../components/ui/scroll-area";
 
@@ -62,12 +62,11 @@ function App(): JSX.Element {
 
     // Function to format the date in dd/mm/yyyy format
     function formatDateTime(dateTimeStr) {
-
       const cleanedDateTimeStr = dateTimeStr
         .replace(/(India Standard Time|IST)/, "")
         .trim();
       const dateObj = new Date(cleanedDateTimeStr);
-      console.log(dateObj)
+      console.log(dateObj);
 
       if (isNaN(dateObj.getTime())) {
         return { date: null, time: null }; // Return null if date is invalid
@@ -236,7 +235,9 @@ function App(): JSX.Element {
                             {packet.tcp_srcport}
                           </TableCell>
                           <TableCell>{packet.tcp_dstport}</TableCell>
-                          <TableCell className="w-[14rem]">{packet._ws_col_info}</TableCell>
+                          <TableCell className="w-[14rem]">
+                            {packet._ws_col_info}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
