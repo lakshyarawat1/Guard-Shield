@@ -3,9 +3,11 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+let mainWindow;
+
 function createWindow(): void {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
     show: false,
@@ -16,6 +18,7 @@ function createWindow(): void {
       sandbox: false
     }
   })
+
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -32,10 +35,38 @@ function createWindow(): void {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    
   }
+
+
 
   mainWindow.maximize()
 }
+
+let childWindow
+
+function createChildWindow() {
+  childWindow = new BrowserWindow({
+    width: 1000,
+    height: 800,
+    modal: true,
+    show: false,
+    parent: mainWindow,
+    webPreferences: {
+      contextIsolation: false,
+      
+    }
+  });
+  childWindow.loadFile(join(__dirname, "../renderer/child.html"))
+
+  childWindow.on('ready-to-show', () => {
+    childWindow.show()
+  })
+}
+
+ipcMain.on("openChildWindow", (event, arg) => {
+  createChildWindow();
+})
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.

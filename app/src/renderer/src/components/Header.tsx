@@ -7,8 +7,15 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { Separator } from "../../../components/ui/separator";
+import { BrowserWindow } from "electron";
 
 export function Header() {
+  // const ProfileWindow = new BrowserWindow({ width: 800, height: 600 });
+
+  // const openProfileWindow = () => {
+  //   ProfileWindow.loadFile("profile.html");
+  // };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background h-full ">
       <div className="container flex h-14 max-w-screen-2xl items-center">
@@ -50,10 +57,9 @@ export function Header() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="flex flex-col">
-                <a
-                  href="/profile"
-                  className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center"
-                >
+                <a href="../../profile.html"
+                  // onClick={openProfileWindow}
+                  className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center">
                   My Profile
                 </a>
                 <a
