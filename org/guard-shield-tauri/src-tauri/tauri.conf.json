@@ -1,18 +1,18 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "GuardShield",
+  "productName": "Guard-Shield",
   "version": "0.1.0",
   "identifier": "com.tauri.dev",
   "build": {
-    "frontendDist": "../dist/apps/guard-shield-tauri",
+    "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "pnpm exec nx dev @org/guard-shield-tauri",
-    "beforeBuildCommand": "pnpm exec nx build @org/guard-shield-tauri"
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [
       {
-        "title": "Guard-Shield",
+        "title": "@org/guard-shield-tauri",
         "width": 800,
         "height": 600,
         "resizable": true,
