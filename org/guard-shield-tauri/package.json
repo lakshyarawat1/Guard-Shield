@@ -2,8 +2,8 @@
   "name": "@org/guard-shield-tauri",
   "version": "0.0.1",
   "private": true,
-  "scripts":{
-    "tauri" : "tauri"
+  "scripts": {
+    "tauri": "tauri"
   },
   "dependencies": {
     "next": "~15.2.4",
@@ -11,6 +11,7 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@nxrs/cargo": "^0.6.2",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/cli": "^2.8.4"
   }
