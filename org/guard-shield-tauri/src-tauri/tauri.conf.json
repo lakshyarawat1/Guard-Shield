@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "@org/guard-shield-tauri",
+        "title": "Guard Shield",
         "width": 800,
         "height": 600,
         "resizable": true,
