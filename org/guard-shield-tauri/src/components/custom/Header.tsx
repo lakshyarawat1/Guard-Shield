@@ -9,11 +9,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 export function Header() {
-  // const ProfileWindow = new BrowserWindow({ width: 800, height: 600 });
-
-  // const openProfileWindow = () => {
-  //   ProfileWindow.loadFile("profile.html");
-  // };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background h-full ">
@@ -25,9 +20,9 @@ export function Header() {
           </a>
           <Separator orientation="vertical" className="py-2 mx-2" />
           <DropdownMenu>
-            <DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild>
               <Button
-                className="flex items-center gap-2 px-4"
+                className="flex items-center gap-2 px-4 cursor-pointer select-none"
                 variant="outline"
               >
                 Default <ChevronDownIcon className="w-4 h-4" />{' '}
@@ -43,13 +38,22 @@ export function Header() {
 
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
           <nav className="flex gap-2 items-center">
-            <Button variant="outline" size="icon">
-              <Bell className="h-[1.2rem] w-[1.2rem]" />
-            </Button>
             <DropdownMenu>
-              <DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <Bell className="h-[1.2rem] w-[1.2rem]" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="flex flex-col min-w-[20rem]">
+                <DropdownMenuItem>
+                  <p className="text-center w-full">No Notifications...</p>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
-                  className="flex items-center gap-2 px-4"
+                  className="flex items-center gap-2 px-4 select-none custor-pointer"
                   variant="outline"
                 >
                   Guest <ChevronDownIcon className="w-4 h-4" />{' '}
@@ -57,7 +61,7 @@ export function Header() {
               </DropdownMenuTrigger>
               <DropdownMenuContent className="flex flex-col">
                 <a
-                  href="../../profile.html"
+                  href="/profile"
                   // onClick={openProfileWindow}
                   className="px-12 py-2 hover:bg-gray-200 rounded-lg text-center"
                 >
@@ -83,7 +87,7 @@ export function Header() {
                 </a>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button>Sign In</Button>
+            <Button className='select-none'>Sign In</Button>
           </nav>
         </div>
       </div>

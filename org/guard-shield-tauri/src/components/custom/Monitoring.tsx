@@ -80,7 +80,7 @@ const Monitoring = (props: Props) => {
     {
       impact: 6.7,
       severity: 'Medium',
-      ID: '12',
+      ID: '13',
       port: '80',
       protocol: 'http',
     },
@@ -94,28 +94,28 @@ const Monitoring = (props: Props) => {
     {
       impact: 2.7,
       severity: 'Low',
-      ID: '12',
+      ID: '14',
       port: '80',
       protocol: 'http',
     },
     {
       impact: 9.7,
       severity: 'Critical',
-      ID: '12',
+      ID: '15',
       port: '80',
       protocol: 'http',
     },
     {
       impact: 9.7,
       severity: 'High',
-      ID: '12',
+      ID: '17',
       port: '80',
       protocol: 'http',
     },
     {
       impact: 0.7,
       severity: 'High',
-      ID: '12',
+      ID: '22',
       port: '80',
       protocol: 'http',
     },
@@ -175,7 +175,7 @@ const Monitoring = (props: Props) => {
               {tableData.map((item) => {
                 return (
                   <TableRow key={item.ID} className="">
-                    <TableCell className="font-medium w-[15%]">
+                    <TableCell className=" w-[15%]">
                       <Badge
                         className={`rounded-sm px-2 text-md ${
                           item.impact < 10 && item.impact > 8

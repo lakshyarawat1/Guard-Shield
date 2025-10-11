@@ -6,10 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from 'lucide-react';
 import { protocolNames } from '@/constants/constants';
 import { PacketType } from '@/types/dataTypes';
-import { Header } from './components/Header';
-import Infobar from './components/Infobar';
-import Sidebar from './components/Sidebar';
-import Monitoring from './components/Monitoring';
+import { Header } from '../components/custom/Header';
+import Infobar from '../components/custom/Infobar';
+import Sidebar from '../components/custom/Sidebar';
+import Monitoring from '../components/custom/Monitoring';
 
 export default function Index() {
   /*
@@ -270,8 +270,7 @@ export default function Index() {
       <div className="flex">
         <Sidebar />
         <div className="m-[0.3rem] p-4 w-[85%]">
-          <h1 className="text-xl font-black tracking-tighter">IDS / IPS</h1>
-          <Tabs defaultValue="Monitoring" className="my-4">
+          <Tabs defaultValue="Monitoring" className="">
             <TabsList>
               <TabsTrigger value="Monitoring">Monitoring</TabsTrigger>
               <TabsTrigger value="Packet Query">Packet Query</TabsTrigger>
@@ -312,7 +311,7 @@ export default function Index() {
                       return (
                         <TableRow key={idx} className="text-muted-foreground">
                           <TableCell>
-                            <Badge>{protocolNames[packet.ip_proto as keyof typeof protocolNames]}</Badge>
+                            <Badge>2</Badge>
                           </TableCell>
                           <TableCell>{packet.ip_src}</TableCell>
                           <TableCell>{packet.ip_dst}</TableCell>

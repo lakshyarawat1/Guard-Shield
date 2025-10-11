@@ -120,3 +120,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+.bar-options {
+  display: flex;
+  /* justify-content: space-between; */
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.bar-options:hover {
+  background-color: rgb(234, 234, 235);
+  border-radius: 1rem;
+}
