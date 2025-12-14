@@ -1,2 +1,5 @@
 /node_modules
 /packetIQ/target
+.nx/installation
+.nx/cache
+.nx/workspace-data
