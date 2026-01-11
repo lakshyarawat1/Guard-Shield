@@ -6,8 +6,9 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "tauri:dev":"turbo run tauri:dev --filter=guard-shield-tauri",
     "check-types": "turbo run check-types"
-  },
+},
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.6.3",

@@ -5,7 +5,11 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".dist/**", "**/*.tauri"]
+    },
+    "tauri:dev": {
+      "cache":false,
+      "dependsOn": ["^build"]
     },
     "lint": {
       "dependsOn": ["^lint"]
