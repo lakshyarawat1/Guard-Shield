@@ -162,6 +162,30 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64) -> Re
     Ok(alert)
 }
 
+pub fn insert_mock_alert(conn: &Connection, severity: &str, impact: f64) -> Result<AlertData> {
+    use chrono::Local;
+    let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    let port = "1337";
+    let protocol = "TCP";
+    let info = "Mock alert from Dev Tools";
+
+    conn.execute(
+        "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![ts, impact, severity, port, protocol, info],
+    )?;
+
+    let id = conn.last_insert_rowid();
+    Ok(AlertData {
+        id,
+        timestamp: ts,
+        impact_score: impact,
+        severity: severity.to_string(),
+        port: port.to_string(),
+        protocol: protocol.to_string(),
+        info: info.to_string(),
+    })
+}
+
 pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
     let mut stmt = conn.prepare("SELECT frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst FROM packets ORDER BY id DESC LIMIT 100")?;
     let packet_iter = stmt.query_map([], |row| {

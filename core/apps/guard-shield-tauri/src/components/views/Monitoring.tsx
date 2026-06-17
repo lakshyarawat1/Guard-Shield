@@ -1,5 +1,5 @@
 
-import { Clock, Info, ShieldBan, Eye, XCircle } from "lucide-react";
+import { Clock, Info, ShieldBan, Eye, XCircle, ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react";
 
 import {
   CartesianGrid,
@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Switch } from "../../components/ui/switch";
 import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -58,10 +59,84 @@ const Monitoring = () => {
   const [showOnlyStarred, setShowOnlyStarred] = useState<boolean>(false);
   const [starredAlertIds, setStarredAlertIds] = useState<Set<number>>(new Set());
 
+  const [showDevModal, setShowDevModal] = useState<boolean>(false);
+  const [devSeverity, setDevSeverity] = useState<string>("Critical");
+  const [devImpact, setDevImpact] = useState<number>(9.5);
+
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+
   const filteredAlerts = (severityFilter === "All" 
     ? alerts 
     : alerts.filter(a => a.severity === severityFilter))
     .filter(a => !showOnlyStarred || starredAlertIds.has(a.id));
+
+  const sortedAlerts = useMemo(() => {
+    const sortableAlerts = [...filteredAlerts];
+    if (sortConfig !== null) {
+      sortableAlerts.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+        switch (sortConfig.key) {
+          case "Impact Score":
+            aValue = a.impact_score;
+            bValue = b.impact_score;
+            break;
+          case "Severity":
+            const sevMap: Record<string, number> = { "Critical": 4, "High": 3, "Medium": 2, "Low": 1 };
+            aValue = sevMap[a.severity] || 0;
+            bValue = sevMap[b.severity] || 0;
+            break;
+          case "Timestamp":
+            aValue = new Date(a.timestamp).getTime();
+            bValue = new Date(b.timestamp).getTime();
+            break;
+          case "Port":
+            aValue = parseInt(a.port) || 0;
+            bValue = parseInt(b.port) || 0;
+            break;
+          case "Protocol":
+            aValue = a.protocol;
+            bValue = b.protocol;
+            break;
+          case "Info":
+            aValue = a.info;
+            bValue = b.info;
+            break;
+          default:
+            aValue = 0;
+            bValue = 0;
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === "asc" ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === "asc" ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableAlerts;
+  }, [filteredAlerts, sortConfig]);
+
+  const requestSort = (key: string) => {
+    let direction: "asc" | "desc" = "asc";
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="ml-2 h-3 w-3" />;
+    }
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp className="ml-2 h-3 w-3" />
+    ) : (
+      <ArrowDown className="ml-2 h-3 w-3" />
+    );
+  };
 
   useEffect(() => {
     const fetchTelemetry = async () => {
@@ -184,13 +259,23 @@ const Monitoring = () => {
             <Switch id="starred-mode" checked={showOnlyStarred} onCheckedChange={setShowOnlyStarred} />
             <Label htmlFor="starred-mode" className="text-xs cursor-pointer select-none">Show Starred</Label>
           </div>
+          <div className="flex-1"></div>
+          <Button variant="outline" size="sm" onClick={() => setShowDevModal(true)} className="gap-2 text-xs h-7 border-dashed">
+            <ShieldBan className="size-3" />
+            Simulate Alert (Dev)
+          </Button>
         </div>
         <ScrollArea className="h-52">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="flex gap-3 items-center text-center">
-                  Impact Score{" "}
+                <TableHead 
+                  className="flex gap-3 items-center text-center cursor-pointer hover:bg-muted/60 transition-colors select-none"
+                  onClick={() => requestSort("Impact Score")}
+                >
+                  <div className="flex items-center">
+                    Impact Score {renderSortIcon("Impact Score")}
+                  </div>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
@@ -201,26 +286,36 @@ const Monitoring = () => {
                           Impact Score represents the calculated risk or potential effect of an intrusion attempt, based on various factors associated with each unique ID. It is distinct from Severity, which categorizes the overall threat level.
                         </p>
                       </TooltipContent>
-                    </Tooltip>{" "}
+                    </Tooltip>
                   </TooltipProvider>
                 </TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Timestamp</TableHead>
-                <TableHead>Port</TableHead>
-                <TableHead className="text-right">Protocol</TableHead>
-                <TableHead>Info</TableHead>
+                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Severity")}>
+                  <div className="flex items-center">Severity {renderSortIcon("Severity")}</div>
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Timestamp")}>
+                  <div className="flex items-center">Timestamp {renderSortIcon("Timestamp")}</div>
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Port")}>
+                  <div className="flex items-center">Port {renderSortIcon("Port")}</div>
+                </TableHead>
+                <TableHead className="text-right cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Protocol")}>
+                  <div className="flex items-center justify-end">Protocol {renderSortIcon("Protocol")}</div>
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Info")}>
+                  <div className="flex items-center">Info {renderSortIcon("Info")}</div>
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAlerts.length === 0 ? (
+              {sortedAlerts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     No intrusion attempts detected.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAlerts.map((item) => (
+                sortedAlerts.map((item) => (
                   <TableRow key={item.id} onClick={() => setSelectedAlert(item)} className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium w-[25%]">
                       <Badge className={`rounded-sm px-2 text-md ${getImpactColor(item.impact_score)}`}>
@@ -283,30 +378,63 @@ const Monitoring = () => {
         </ScrollArea>
       </div>
 
-      {/* Alert Details Modal */}
-      <Dialog open={selectedAlert !== null} onOpenChange={(open) => { if (!open) setSelectedAlert(null); }}>
-        <DialogContent className="max-w-2xl bg-background border-border">
+      <Dialog open={selectedAlert !== null} onOpenChange={(open) => !open && setSelectedAlert(null)}>
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">Alert Details</DialogTitle>
-            <DialogDescription>
-              Detailed view of the intrusion attempt.
-            </DialogDescription>
+            <DialogTitle className="flex items-center justify-between">
+              Alert Details
+              {selectedAlert && (
+                <Badge className={`${getSeverityColor(selectedAlert.severity)} mr-6`}>
+                  {selectedAlert.severity}
+                </Badge>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {selectedAlert && (() => {
             const isStarred = starredAlertIds.has(selectedAlert.id);
             return (
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4 text-sm bg-muted/20 p-4 rounded-lg border">
-                  <div><strong className="text-muted-foreground mr-2">ID:</strong> {selectedAlert.id}</div>
-                  <div><strong className="text-muted-foreground mr-2">Time:</strong> {selectedAlert.timestamp ? new Date(selectedAlert.timestamp).toLocaleString() : "—"}</div>
-                  <div><strong className="text-muted-foreground mr-2">Severity:</strong> <Badge className={getSeverityColor(selectedAlert.severity)}>{selectedAlert.severity}</Badge></div>
-                  <div><strong className="text-muted-foreground mr-2">Impact Score:</strong> <Badge className={getImpactColor(selectedAlert.impact_score)}>{selectedAlert.impact_score.toFixed(1)}</Badge></div>
-                  <div><strong className="text-muted-foreground mr-2">Protocol:</strong> {selectedAlert.protocol}</div>
-                  <div><strong className="text-muted-foreground mr-2">Port:</strong> {selectedAlert.port}</div>
+              <div className="grid gap-4 py-4 text-sm">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground">ID</span>
+                  <span className="col-span-3">#{selectedAlert.id}</span>
                 </div>
-                <div className="text-sm bg-muted/20 p-4 rounded-lg border">
-                  <strong className="text-muted-foreground block mb-2">Alert Info:</strong> 
-                  <span className="break-all font-mono text-xs">{selectedAlert.info || "No details provided"}</span>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground">Timestamp</span>
+                  <span className="col-span-3">{selectedAlert.timestamp}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground">Protocol</span>
+                  <span className="col-span-3">{selectedAlert.protocol}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground">Port</span>
+                  <span className="col-span-3">{selectedAlert.port}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground flex items-center gap-2">
+                    Impact
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="size-3" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-[200px] text-xs">Score indicating the potential risk level.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </span>
+                  <span className="col-span-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${getImpactColor(selectedAlert.impact_score)}`}>
+                      {selectedAlert.impact_score.toFixed(1)}
+                    </span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 items-start gap-4">
+                  <span className="font-semibold text-muted-foreground mt-1">Info</span>
+                  <div className="col-span-3 bg-muted p-3 rounded-md border font-mono text-xs break-all">
+                    {selectedAlert.info}
+                  </div>
                 </div>
                 <div className="mt-4 flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setSelectedAlert(null)}>Close</Button>
@@ -330,6 +458,52 @@ const Monitoring = () => {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDevModal} onOpenChange={setShowDevModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Dev Options: Test Alert</DialogTitle>
+            <DialogDescription>
+              Simulate an incoming intrusion alert with a custom severity and impact score.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="severity">Severity</Label>
+              <select 
+                id="severity" 
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={devSeverity}
+                onChange={(e) => setDevSeverity(e.target.value)}
+              >
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="impact">Impact Score (0.0 - 10.0)</Label>
+              <Input
+                id="impact"
+                type="number"
+                step="0.1"
+                min="0"
+                max="10"
+                value={devImpact}
+                onChange={(e) => setDevImpact(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowDevModal(false)}>Cancel</Button>
+            <Button onClick={() => {
+              invoke("trigger_mock_alert", { severity: devSeverity, impact: devImpact }).catch(console.error);
+              setShowDevModal(false);
+            }}>Send Alert</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

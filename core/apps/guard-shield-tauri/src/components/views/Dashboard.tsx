@@ -1,6 +1,5 @@
 import { Badge } from "../ui/badge";
-import { ScrollArea } from "../ui/scroll-area";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { TableCell, TableHead } from "../ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
@@ -11,9 +10,10 @@ import Monitoring from "./Monitoring";
 import Sidebar from "./Sidebar";
 import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { TableVirtuoso } from "react-virtuoso";
 
 const getProtocolColor = (proto: string | undefined) => {
   if (!proto) return "bg-gray-500";
@@ -31,7 +31,10 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [interfaces, setInterfaces] = useState<string[]>([]);
   const [selectedInterface, setSelectedInterface] = useState<string>("");
-  const [isCapturing, setIsCapturing] = useState<boolean>(true);
+  const [isCapturing, setIsCapturing] = useState<boolean>(() => {
+    const saved = localStorage.getItem("guard_shield_is_capturing");
+    return saved ? saved === "true" : true;
+  });
 
   const [filterProto, setFilterProto] = useState<string>("All");
   const [filterSrcIp, setFilterSrcIp] = useState<string>("");
@@ -72,17 +75,23 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const handleStart = () => setIsCapturing(true);
-    const handleStop = () => setIsCapturing(false);
+    const handleStart = () => {
+      localStorage.setItem("guard_shield_is_capturing", "true");
+      setIsCapturing(true);
+    };
+    const handleStop = () => {
+      localStorage.setItem("guard_shield_is_capturing", "false");
+      setIsCapturing(false);
+    };
     
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        setIsCapturing(true);
+        window.dispatchEvent(new Event("ui-start-capture"));
       }
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'x') {
         e.preventDefault();
-        setIsCapturing(false);
+        window.dispatchEvent(new Event("ui-stop-capture"));
       }
     };
 
@@ -116,11 +125,11 @@ export default function Dashboard() {
           bpfFilter: "", // Can be modified by user later
         });
 
-        unlisten = await listen<PacketType>("packet-captured", (event) => {
+        unlisten = await listen<PacketType[]>("packets-batch", (event) => {
           setPackets((prev) => {
-            // Keep last 100 packets for performance
-            const newPackets = [event.payload, ...prev];
-            return newPackets.slice(0, 100);
+            // Keep last 10000 packets for performance
+            const newPackets = [...event.payload.reverse(), ...prev];
+            return newPackets.slice(0, 10000);
           });
         });
       } catch (e) {
@@ -277,10 +286,54 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
-              <ScrollArea className="h-[28rem] rounded-md border">
-                <Table>
-                  <TableHeader className="bg-muted/40 sticky top-0 backdrop-blur-sm z-10">
-                    <TableRow>
+              <div className="h-[28rem] rounded-md border bg-background overflow-hidden flex flex-col">
+                <TableVirtuoso
+                  data={sortedPackets}
+                  className="flex-1 w-full"
+                  components={{
+                    Table: (props) => <table {...props} className="w-full caption-bottom text-sm" />,
+                    TableHead: React.forwardRef((props, ref) => <thead {...props} ref={ref as any} className="bg-muted/40 sticky top-0 backdrop-blur-sm z-10 [&_tr]:border-b" />),
+                    TableRow: (props) => <tr {...props} className="text-sm font-medium transition-colors hover:bg-muted/60 data-[state=selected]:bg-muted border-b" />,
+                    TableBody: React.forwardRef((props, ref) => <tbody {...props} ref={ref as any} className="[&_tr:last-child]:border-0" />),
+                    EmptyPlaceholder: () => (
+                      <tbody>
+                        {error ? (
+                          <tr>
+                            <td colSpan={7} className="h-[24rem] text-center">
+                              <div className="flex flex-col items-center justify-center text-destructive space-y-2">
+                                <span className="text-4xl">⚠️</span>
+                                <p className="font-bold text-lg">Packet Capture Failed</p>
+                                <p className="text-sm max-w-md">{error}</p>
+                                <p className="text-xs text-muted-foreground mt-4">Make sure to run the application as Administrator.</p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : packets.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="h-[24rem] text-center">
+                              <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
+                                <span className="text-4xl animate-pulse">📡</span>
+                                <p className="font-bold text-lg">Waiting for packets...</p>
+                                <p className="text-sm">Listening on active network interface.</p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : filteredPackets.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="h-[24rem] text-center">
+                              <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
+                                <span className="text-4xl">🔍</span>
+                                <p className="font-bold text-lg">No matches found</p>
+                                <p className="text-sm">Try adjusting your filters.</p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    )
+                  }}
+                  fixedHeaderContent={() => (
+                    <tr>
                       <TableHead 
                         className="w-[8%] text-xs uppercase tracking-wider cursor-pointer hover:bg-muted/60 transition-colors select-none"
                         onClick={() => requestSort("Protocol")}
@@ -318,73 +371,33 @@ export default function Dashboard() {
                         <div className="flex items-center justify-center">Dest Port {renderSortIcon("TCP Destination Port")}</div>
                       </TableHead>
                       <TableHead className="w-[23%] text-xs uppercase tracking-wider">Info</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {error ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-[24rem] text-center">
-                          <div className="flex flex-col items-center justify-center text-destructive space-y-2">
-                            <span className="text-4xl">⚠️</span>
-                            <p className="font-bold text-lg">Packet Capture Failed</p>
-                            <p className="text-sm max-w-md">{error}</p>
-                            <p className="text-xs text-muted-foreground mt-4">Make sure to run the application as Administrator.</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : packets.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-[24rem] text-center">
-                          <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
-                            <span className="text-4xl animate-pulse">📡</span>
-                            <p className="font-bold text-lg">Waiting for packets...</p>
-                            <p className="text-sm">Listening on active network interface.</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredPackets.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-[24rem] text-center">
-                          <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
-                            <span className="text-4xl">🔍</span>
-                            <p className="font-bold text-lg">No matches found</p>
-                            <p className="text-sm">Try adjusting your filters.</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      sortedPackets.map((packet, idx) => {
-                      return (
-                        <TableRow
-                          key={idx}
-                          className="text-sm font-medium transition-colors hover:bg-muted/60 data-[state=selected]:bg-muted"
-                        >
-                          <TableCell>
-                            <Badge className={getProtocolColor(packet.ip_proto?.[0])}>
-                              {packet.ip_proto?.[0] ? protocolNames[Number(packet.ip_proto[0]) as keyof typeof protocolNames] || packet.ip_proto[0] : "N/A"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{packet.ip_src?.[0] || ""}</TableCell>
-                          <TableCell>{packet.ip_dst?.[0] || ""}</TableCell>
-                          <TableCell>
-                            {packet.frame_time?.[0] || ""}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {packet.tcp_srcport?.[0] || packet.udp_srcport?.[0] || ""}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {packet.tcp_dstport?.[0] || packet.udp_dstport?.[0] || ""}
-                          </TableCell>
-                          <TableCell className="w-56 truncate">
-                            {packet._ws_col_info?.[0] || ""}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
+                    </tr>
                   )}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
+                  itemContent={(_index, packet) => (
+                    <>
+                      <TableCell>
+                        <Badge className={getProtocolColor(packet.ip_proto?.[0])}>
+                          {packet.ip_proto?.[0] ? protocolNames[Number(packet.ip_proto[0]) as keyof typeof protocolNames] || packet.ip_proto[0] : "N/A"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{packet.ip_src?.[0] || ""}</TableCell>
+                      <TableCell>{packet.ip_dst?.[0] || ""}</TableCell>
+                      <TableCell>
+                        {packet.frame_time?.[0] || ""}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {packet.tcp_srcport?.[0] || packet.udp_srcport?.[0] || ""}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {packet.tcp_dstport?.[0] || packet.udp_dstport?.[0] || ""}
+                      </TableCell>
+                      <TableCell className="w-56 truncate">
+                        {packet._ws_col_info?.[0] || ""}
+                      </TableCell>
+                    </>
+                  )}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </div>

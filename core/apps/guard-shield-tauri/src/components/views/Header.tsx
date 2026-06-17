@@ -72,11 +72,20 @@ export const openGeneralSettingsWindow = async () => {
 };
 
 export function Header() {
-  const [isCapturing, setIsCapturing] = useState(true);
+  const [isCapturing, setIsCapturing] = useState<boolean>(() => {
+    const saved = localStorage.getItem("guard_shield_is_capturing");
+    return saved ? saved === "true" : true;
+  });
 
   useEffect(() => {
-    const handleStart = () => setIsCapturing(true);
-    const handleStop = () => setIsCapturing(false);
+    const handleStart = () => {
+      localStorage.setItem("guard_shield_is_capturing", "true");
+      setIsCapturing(true);
+    };
+    const handleStop = () => {
+      localStorage.setItem("guard_shield_is_capturing", "false");
+      setIsCapturing(false);
+    };
     
     window.addEventListener("ui-start-capture", handleStart);
     window.addEventListener("ui-stop-capture", handleStop);

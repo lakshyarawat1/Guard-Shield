@@ -43,6 +43,24 @@ fn stop_packet_capture(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn trigger_mock_alert(
+    app: AppHandle,
+    db_state: State<'_, database::DatabaseState>,
+    severity: String,
+    impact: f64,
+) -> Result<(), String> {
+    if let Ok(conn) = db_state.conn.lock() {
+        match database::insert_mock_alert(&conn, &severity, impact) {
+            Ok(alert) => {
+                let _ = app.emit("intrusion-alert", alert);
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn start_packet_capture(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -70,22 +88,42 @@ fn start_packet_capture(
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut counter = 0u64;
+        let mut batch = Vec::new();
+        let mut last_emit = std::time::Instant::now();
+
         while let Ok(packet) = rx.recv() {
+            let mut packets_to_process = vec![packet];
+            
+            while let Ok(p) = rx.try_recv() {
+                packets_to_process.push(p);
+                if packets_to_process.len() >= 200 {
+                    break;
+                }
+            }
+
             if let Some(db_state) = app_clone.try_state::<database::DatabaseState>() {
                 if let Ok(conn) = db_state.conn.lock() {
-                    match database::insert_packet(&conn, &packet, &mut counter) {
-                        Ok(Some(alert)) => {
-                            let _ = app_clone.emit("intrusion-alert", alert);
+                    for p in &packets_to_process {
+                        match database::insert_packet(&conn, p, &mut counter) {
+                            Ok(Some(alert)) => {
+                                let _ = app_clone.emit("intrusion-alert", alert);
+                            }
+                            Err(e) => eprintln!("DB insert error: {}", e),
+                            _ => {}
                         }
-                        Err(e) => eprintln!("DB insert error: {}", e),
-                        _ => {}
                     }
                 }
             }
 
-            if let Err(e) = app_clone.emit("packet-captured", packet) {
-                eprintln!("Failed to emit packet: {}", e);
-                break;
+            batch.extend(packets_to_process);
+
+            if last_emit.elapsed().as_millis() > 500 || batch.len() >= 500 {
+                if let Err(e) = app_clone.emit("packets-batch", &batch) {
+                    eprintln!("Failed to emit packets batch: {}", e);
+                    break;
+                }
+                batch.clear();
+                last_emit = std::time::Instant::now();
             }
         }
     });
@@ -110,6 +148,7 @@ pub fn run() {
             get_network_interfaces,
             start_packet_capture,
             stop_packet_capture,
+            trigger_mock_alert,
             get_historical_packets,
             get_alerts,
             get_telemetry_stats
