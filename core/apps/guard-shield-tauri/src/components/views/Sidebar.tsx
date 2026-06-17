@@ -38,8 +38,15 @@ const Sidebar = () => {
               className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => navigate("/")}
             >
+              <LineChart className="size-4" />
+              <span>Analytics Dashboard</span>
+            </div>
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate("/live-traffic")}
+            >
               <Radar className="size-4" />
-              <span>IDS / IPS</span>
+              <span>Live Traffic</span>
             </div>
             <div 
               className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"

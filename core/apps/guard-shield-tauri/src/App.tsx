@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
-import Dashboard from "./components/views/Dashboard";
+import AnalyticsDashboard from "./components/views/AnalyticsDashboard";
+import LiveTraffic from "./components/views/LiveTraffic";
 import NetworkingSettings from "./components/views/NetworkingSettings";
 import Profile from "./components/views/Profile";
 import CreateRule from "./components/views/CreateRule";
@@ -10,7 +11,8 @@ import SuspiciousTraffic from "./components/views/SuspiciousTraffic";
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Dashboard />} />
+      <Route path="/" element={<AnalyticsDashboard />} />
+      <Route path="/live-traffic" element={<LiveTraffic />} />
       <Route path="/suspicious-traffic" element={<SuspiciousTraffic />} />
       <Route path="/settings/networking" element={<NetworkingSettings />} />
       <Route path="/settings/general" element={<GeneralSettings />} />

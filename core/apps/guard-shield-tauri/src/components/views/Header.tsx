@@ -10,7 +10,8 @@ import {
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { useEffect, useState } from "react";
-
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 async function openProfileWindow() {
@@ -76,25 +77,96 @@ export function Header() {
     const saved = localStorage.getItem("guard_shield_is_capturing");
     return saved ? saved === "true" : true;
   });
+  
+  const [threatCount, setThreatCount] = useState<number>(0);
+  const [packetRate, setPacketRate] = useState<number>(0);
 
   useEffect(() => {
+    let unlistenAlert: () => void;
+    let unlistenPackets: () => void;
+    let packetCountInSec = 0;
+
+    invoke("get_telemetry_stats").then((s: any) => setThreatCount(s.total_alerts)).catch(console.error);
+
+    const setupTelemetry = async () => {
+      unlistenAlert = await listen("intrusion-alert", () => {
+        setThreatCount(prev => prev + 1);
+      });
+      unlistenPackets = await listen<any[]>("packets-batch", (event) => {
+        packetCountInSec += event.payload.length;
+      });
+    };
+    setupTelemetry();
+
+    const interval = setInterval(() => {
+      setPacketRate(packetCountInSec);
+      packetCountInSec = 0;
+    }, 1000);
+
+    return () => {
+      if (unlistenAlert) unlistenAlert();
+      if (unlistenPackets) unlistenPackets();
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const startBackendCapture = async () => {
+      try {
+        let iface = localStorage.getItem("guard_shield_interface");
+        if (!iface) {
+          const ifaces = await invoke<string[]>("get_network_interfaces");
+          iface = ifaces.find((i) => !i.toLowerCase().includes("loopback")) || ifaces[0];
+          if (iface) localStorage.setItem("guard_shield_interface", iface);
+        }
+        if (iface) {
+          await invoke("start_packet_capture", { interfaceName: iface, bpfFilter: "" });
+        }
+      } catch (e) {
+        console.error("Global capture start failed:", e);
+      }
+    };
+
     const handleStart = () => {
       localStorage.setItem("guard_shield_is_capturing", "true");
       setIsCapturing(true);
+      startBackendCapture();
     };
+    
     const handleStop = () => {
       localStorage.setItem("guard_shield_is_capturing", "false");
       setIsCapturing(false);
+      invoke("stop_packet_capture").catch(console.error);
     };
-    
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleStart();
+      }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'x') {
+        e.preventDefault();
+        handleStop();
+      }
+    };
+
     window.addEventListener("ui-start-capture", handleStart);
     window.addEventListener("ui-stop-capture", handleStop);
+    window.addEventListener("keydown", handleKeyDown);
+
+    // Initial boot capture check
+    if (isCapturing) {
+      startBackendCapture();
+    } else {
+      invoke("stop_packet_capture").catch(console.error);
+    }
     
     return () => {
       window.removeEventListener("ui-start-capture", handleStart);
       window.removeEventListener("ui-stop-capture", handleStop);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [isCapturing]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background h-full ">
@@ -137,12 +209,12 @@ export function Header() {
             <Separator orientation="vertical" className="h-4" />
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Activity className="size-3" />
-              <span>0 pkt/s</span>
+              <span>{packetRate} pkt/s</span>
             </div>
             <Separator orientation="vertical" className="h-4" />
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldAlert className="size-3" />
-              <span>0 threats</span>
+              <span>{threatCount} threats</span>
             </div>
           </div>
           <nav className="flex gap-2 items-center">

@@ -1,15 +1,4 @@
-
 import { Clock, Info, ShieldBan, Eye, XCircle, ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react";
-
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip as ToolTip, XAxis,
-  YAxis,
-} from "recharts";
 import {
   Table,
   TableBody,
@@ -171,17 +160,7 @@ const Monitoring = () => {
     };
   }, []);
 
-  const chartData = useMemo(() => {
-    return [...alerts].reverse().slice(-20).map((a) => {
-      const timeParts = a.timestamp.split("T");
-      const timeStr = timeParts.length > 1 ? timeParts[1] : a.timestamp;
-      
-      return {
-        time: timeStr,
-        impact: a.impact_score,
-      };
-    });
-  }, [alerts]);
+
 
   const getImpactColor = (impact: number) => {
     if (impact >= 8) return "bg-destructive text-white";
@@ -212,30 +191,6 @@ const Monitoring = () => {
         </span>
       </div>
       <div>
-        <ResponsiveContainer width="100%" height={200} className="my-6">
-          {chartData.length > 0 ? (
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="time" stroke="var(--muted-foreground)" fontSize={12} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={12} domain={[0, 10]} />
-              <ToolTip
-                contentStyle={{
-                  backgroundColor: "var(--popover)",
-                  borderColor: "var(--border)",
-                  color: "var(--popover-foreground)",
-                  borderRadius: "var(--radius)",
-                  fontSize: "0.875rem",
-                }}
-              />
-              <Legend />
-              <Line type="step" dataKey="impact" name="Impact Score" stroke="var(--destructive)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-            </LineChart>
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground border-2 border-dashed rounded-md">
-              <span className="text-sm">No telemetry data available yet</span>
-            </div>
-          )}
-        </ResponsiveContainer>
         <div className="flex items-center gap-2 my-4">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Filter:</span>
           {["All", "Critical", "High", "Medium", "Low"].map((level) => (

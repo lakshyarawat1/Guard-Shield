@@ -1,12 +1,10 @@
 import { Badge } from "../ui/badge";
 import { TableCell, TableHead } from "../ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
 import { ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react";
 import { Header } from "./Header";
 import Infobar from "./Infobar";
-import Monitoring from "./Monitoring";
 import Sidebar from "./Sidebar";
 import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
@@ -26,15 +24,11 @@ const getProtocolColor = (proto: string | undefined) => {
   }
 };
 
-export default function Dashboard() {
+export default function LiveTraffic() {
   const [packets, setPackets] = useState<PacketType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [interfaces, setInterfaces] = useState<string[]>([]);
   const [selectedInterface, setSelectedInterface] = useState<string>("");
-  const [isCapturing, setIsCapturing] = useState<boolean>(() => {
-    const saved = localStorage.getItem("guard_shield_is_capturing");
-    return saved ? saved === "true" : true;
-  });
 
   const [filterProto, setFilterProto] = useState<string>("All");
   const [filterSrcIp, setFilterSrcIp] = useState<string>("");
@@ -64,8 +58,12 @@ export default function Dashboard() {
         const ifaces = await invoke<string[]>("get_network_interfaces");
         setInterfaces(ifaces);
         if (ifaces.length > 0) {
-          const defaultIface = ifaces.find((i) => !i.toLowerCase().includes("loopback")) || ifaces[0];
-          setSelectedInterface(defaultIface);
+          let savedIface = localStorage.getItem("guard_shield_interface");
+          if (!savedIface || !ifaces.includes(savedIface)) {
+            savedIface = ifaces.find((i) => !i.toLowerCase().includes("loopback")) || ifaces[0];
+            localStorage.setItem("guard_shield_interface", savedIface);
+          }
+          setSelectedInterface(savedIface);
         }
       } catch (e) {
         console.error("Failed to fetch interfaces", e);
@@ -75,56 +73,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const handleStart = () => {
-      localStorage.setItem("guard_shield_is_capturing", "true");
-      setIsCapturing(true);
-    };
-    const handleStop = () => {
-      localStorage.setItem("guard_shield_is_capturing", "false");
-      setIsCapturing(false);
-    };
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        window.dispatchEvent(new Event("ui-start-capture"));
-      }
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'x') {
-        e.preventDefault();
-        window.dispatchEvent(new Event("ui-stop-capture"));
-      }
-    };
-
-    window.addEventListener("ui-start-capture", handleStart);
-    window.addEventListener("ui-stop-capture", handleStop);
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("ui-start-capture", handleStart);
-      window.removeEventListener("ui-stop-capture", handleStop);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!selectedInterface) return;
     let unlisten: () => void;
-
-    if (!isCapturing) {
-      invoke("stop_packet_capture").catch(console.error);
-      return;
-    }
 
     const setupCapture = async () => {
       try {
         setError(null);
-        // We do NOT clear setPackets([]) here because we want to keep the historical packets from the DB!
-        console.log("Starting capture on:", selectedInterface);
-        await invoke("start_packet_capture", {
-          interfaceName: selectedInterface,
-          bpfFilter: "", // Can be modified by user later
-        });
-
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
           setPackets((prev) => {
             // Keep last 10000 packets for performance
@@ -143,7 +96,7 @@ export default function Dashboard() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, [selectedInterface, isCapturing]);
+  }, []);
 
   const filteredPackets = packets.filter((p) => {
     if (filterProto !== "All") {
@@ -190,7 +143,7 @@ export default function Dashboard() {
           break;
         case "TCP Destination Port":
           valA = Number(a.tcp_dstport?.[0] || a.udp_dstport?.[0] || 0);
-          valB = Number(b.tcp_dstport?.[0] || b.udp_dstport?.[0] || 0);
+          valB = Number(b.udp_dstport?.[0] || b.udp_dstport?.[0] || 0);
           break;
       }
 
@@ -220,7 +173,16 @@ export default function Dashboard() {
             <h1 className="text-xl font-black tracking-tighter">IDS / IPS</h1>
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Interface:</span>
-              <Select value={selectedInterface} onValueChange={(val) => setSelectedInterface(val)}>
+              <Select value={selectedInterface} onValueChange={(val) => {
+                setSelectedInterface(val);
+                localStorage.setItem("guard_shield_interface", val);
+                // Restart capture globally to use new interface if currently capturing
+                if (localStorage.getItem("guard_shield_is_capturing") === "true") {
+                  invoke("stop_packet_capture").then(() => {
+                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch(console.error);
+                  });
+                }
+              }}>
                 <SelectTrigger className="w-[180px] bg-background">
                   <SelectValue placeholder="Select Interface" />
                 </SelectTrigger>
@@ -234,15 +196,8 @@ export default function Dashboard() {
               </Select>
             </div>
           </div>
-          <Tabs defaultValue="Monitoring" className="my-4">
-            <TabsList>
-              <TabsTrigger value="Monitoring">Monitoring</TabsTrigger>
-              <TabsTrigger value="Packet Query">Packet Query</TabsTrigger>
-            </TabsList>
-            <TabsContent value="Monitoring">
-              <Monitoring />
-            </TabsContent>
-            <TabsContent value="Packet Query" className="flex flex-col min-h-0">
+          <div className="my-4">
+            <div className="flex flex-col min-h-0">
               <div className="flex flex-wrap items-center gap-4 mb-4 p-4 bg-secondary/20 rounded-xl border">
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-semibold text-muted-foreground">Protocol:</span>
@@ -398,8 +353,8 @@ export default function Dashboard() {
                   )}
                 />
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
       </div>
     </div>
