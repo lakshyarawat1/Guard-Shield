@@ -8,84 +8,146 @@
   import {
     ArrowLeftCircle,
     ArrowRightCircle,
+    Ban,
+    Clock,
     Code2,
-    DatabaseBackupIcon,
-    File,
+    FilePlus,
+    Globe,
+    HeartPulse,
     LineChart,
     NetworkIcon,
     Radar,
+    ScrollText,
     SearchIcon,
     Settings,
-    Share,
+    ShieldCheck,
   } from "lucide-react";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useNavigate } from "react-router-dom";
 
-type Props = {};
-
-const Sidebar = (props: Props) => {
+const Sidebar = () => {
+  const navigate = useNavigate();
 
   return (
-    <div className="min-w-[15%] border-r h-full py-4 px-3 max-h-screen overflow-hidden min-h-164">
+    <div className="w-56 shrink-0 border-r h-full py-4 px-3 max-h-screen overflow-hidden min-h-164">
       <Accordion type="single" className="w-full" collapsible >
         <AccordionItem value="Threat Monitoring">
           <AccordionTrigger>Threat Monitoring</AccordionTrigger>
-          <AccordionContent className="">
-            <div className="bar-options hover:bg-gray-200">
-              <Radar />
+          <AccordionContent>
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate("/")}
+            >
+              <Radar className="size-4" />
               <span>IDS / IPS</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <SearchIcon />
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate("/suspicious-traffic")}
+            >
+              <SearchIcon className="size-4" />
               <span>Suspicious Traffic</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <LineChart />
-              <span>Filtering and Analysis</span>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <LineChart className="size-4" />
+              <span>Filtering & Analysis</span>
+            </div>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <Clock className="size-4" />
+              <span>Event Timeline</span>
             </div>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="Policy Management">
           <AccordionTrigger>Policy Management</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options hover:bg-gray-200">
-              <Code2 />
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <Code2 className="size-4" />
               <span>Malware Prevention</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <ArrowLeftCircle />
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <ArrowLeftCircle className="size-4" />
               <span>Inbound Rules</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <ArrowRightCircle />
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <ArrowRightCircle className="size-4" />
               <span>Outbound Rules</span>
             </div>
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => {
+                new WebviewWindow('create-rule', {
+                  url: '/#/create-rule',
+                  title: 'Create Custom Rule',
+                  width: 900,
+                  height: 700,
+                });
+              }}
+            >
+              <FilePlus className="size-4" />
+              <span>Custom Rules</span>
+            </div>
           </AccordionContent>
-        </AccordionItem>{" "}
-        <AccordionItem value="Export data">
-          <AccordionTrigger>Export data</AccordionTrigger>
+        </AccordionItem>
+        <AccordionItem value="Intelligence">
+          <AccordionTrigger>Intelligence</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options hover:bg-gray-200">
-              <DatabaseBackupIcon />
-              <span>Export as CSV</span>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <Globe className="size-4" />
+              <span>Threat Feed</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <File />
-              <span>Export in a file</span>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <Ban className="size-4" />
+              <span>Blocked IPs</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <Share />
-              <span>Share </span>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <ShieldCheck className="size-4" />
+              <span>Whitelisted IPs</span>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="System">
+          <AccordionTrigger>System</AccordionTrigger>
+          <AccordionContent>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <HeartPulse className="size-4" />
+              <span>System Health</span>
+            </div>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+              <ScrollText className="size-4" />
+              <span>Audit Logs</span>
             </div>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="Settings">
           <AccordionTrigger>Settings</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options hover:bg-gray-200">
-              <Settings />
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => {
+                new WebviewWindow('general-settings', {
+                  url: '/#/settings/general',
+                  title: 'General Settings',
+                  width: 900,
+                  height: 700,
+                });
+              }}
+            >
+              <Settings className="size-4" />
               <span>General Settings</span>
             </div>
-            <div className="bar-options hover:bg-gray-200">
-              <NetworkIcon />
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => {
+                new WebviewWindow('networking-settings', {
+                  url: '/#/settings/networking',
+                  title: 'Networking Settings',
+                  width: 900,
+                  height: 700,
+                });
+              }}
+            >
+              <NetworkIcon className="size-4" />
               <span>Networking Settings</span>
             </div>
           </AccordionContent>

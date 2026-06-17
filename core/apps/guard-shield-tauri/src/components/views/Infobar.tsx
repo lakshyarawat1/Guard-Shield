@@ -10,84 +10,177 @@ import {
   MenubarSubTrigger,
   MenubarTrigger,
 } from "../../components/ui/menubar";
-import { Separator } from "../../components/ui/separator";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+
+function openNetworkingSettings() {
+  new WebviewWindow('networking-settings', {
+    url: '/#/settings/networking',
+    title: 'Networking Settings',
+    width: 900,
+    height: 700,
+  });
+}
 
 const Infobar = () => {
   return (
     <div className="w-full border-b py-2 text-sm">
-      {" "}
       <Menubar className="border-none">
+        {/* ── File ── */}
         <MenubarMenu>
-          <MenubarTrigger>Home</MenubarTrigger>
+          <MenubarTrigger>File</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>Export data</MenubarItem>
-            <MenubarItem>Export as CSV</MenubarItem>
-            <MenubarItem disabled>Import data</MenubarItem>
-            <MenubarSeparator />
             <MenubarSub>
-              <MenubarSubTrigger>Share</MenubarSubTrigger>
+              <MenubarSubTrigger>Export Data</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>Email link</MenubarItem>
-                <MenubarItem>Messages</MenubarItem>
-                <MenubarItem>Notes</MenubarItem>
+                <MenubarItem>
+                  Export as CSV <MenubarShortcut>Ctrl+Shift+E</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem>Export as JSON</MenubarItem>
+                <MenubarItem>Export as PDF Report</MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
+            <MenubarItem>
+              Import Rules... <MenubarShortcut>Ctrl+I</MenubarShortcut>
+            </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>Save</MenubarItem>
+            <MenubarItem>
+              Save Snapshot <MenubarShortcut>Ctrl+S</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem>
+              Print Report... <MenubarShortcut>Ctrl+P</MenubarShortcut>
+            </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
-        <Separator orientation="vertical" />
+
+        {/* ── Monitoring ── */}
         <MenubarMenu>
-          <MenubarTrigger>Networking</MenubarTrigger>
+          <MenubarTrigger>Monitoring</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>
-              Inbound Rules <MenubarShortcut>⌘I</MenubarShortcut>
+            <MenubarItem onSelect={() => window.dispatchEvent(new Event("ui-start-capture"))}>
+              Start Capture <MenubarShortcut>Ctrl+Shift+S</MenubarShortcut>
             </MenubarItem>
-            <MenubarItem>
-              Outbound Rules <MenubarShortcut>⇧⌘O</MenubarShortcut>
+            <MenubarItem onSelect={() => window.dispatchEvent(new Event("ui-stop-capture"))}>
+              Stop Capture <MenubarShortcut>Ctrl+Shift+X</MenubarShortcut>
             </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem>Pause All Alerts</MenubarItem>
+            <MenubarItem>Clear Alert History</MenubarItem>
+            <MenubarSeparator />
+            <MenubarSub>
+              <MenubarSubTrigger>Auto-Refresh</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarItem>5 seconds</MenubarItem>
+                <MenubarItem>10 seconds</MenubarItem>
+                <MenubarItem>30 seconds</MenubarItem>
+                <MenubarItem>1 minute</MenubarItem>
+                <MenubarItem>Off</MenubarItem>
+              </MenubarSubContent>
+            </MenubarSub>
+          </MenubarContent>
+        </MenubarMenu>
+
+        {/* ── Network ── */}
+        <MenubarMenu>
+          <MenubarTrigger>Network</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onSelect={openNetworkingSettings}>
+              Networking Settings <MenubarShortcut>Ctrl+N</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem>Inbound Rules</MenubarItem>
+            <MenubarItem>Outbound Rules</MenubarItem>
             <MenubarSeparator />
             <MenubarSub>
               <MenubarSubTrigger>Ports</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>Search the web</MenubarItem>
-                <MenubarSeparator />
-                <MenubarItem>Default</MenubarItem>
-                <MenubarItem>Common ports </MenubarItem>
-                <MenubarItem>Custom</MenubarItem>
+                <MenubarItem>Well-Known Ports (0–1023)</MenubarItem>
+                <MenubarItem>Registered Ports (1024–49151)</MenubarItem>
+                <MenubarItem>Custom Port Ranges...</MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSeparator />
+            <MenubarItem>Blocked IPs</MenubarItem>
+            <MenubarItem>Whitelisted IPs</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
+
+        {/* ── Security ── */}
         <MenubarMenu>
           <MenubarTrigger>Security</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem inset>Blocked IPs</MenubarItem>
+            <MenubarItem>
+              Threat Feed <MenubarShortcut>Ctrl+T</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem>
+              Protocol Inspector <MenubarShortcut>Ctrl+R</MenubarShortcut>
+            </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem inset>
-              Protocols <MenubarShortcut>⌘R</MenubarShortcut>
+            <MenubarSub>
+              <MenubarSubTrigger>IDS Mode</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarItem>Detection Only</MenubarItem>
+                <MenubarItem>Prevention (Active Block)</MenubarItem>
+                <MenubarItem>Hybrid</MenubarItem>
+                <MenubarItem>Learning Mode</MenubarItem>
+              </MenubarSubContent>
+            </MenubarSub>
+            <MenubarSeparator />
+            <MenubarItem>
+              Quick Block IP... <MenubarShortcut>Ctrl+B</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem>
+              Scan Network Now <MenubarShortcut>Ctrl+Shift+N</MenubarShortcut>
             </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
+
+        {/* ── Tools ── */}
         <MenubarMenu>
-          <MenubarTrigger>Troubleshoot</MenubarTrigger>
+          <MenubarTrigger>Tools</MenubarTrigger>
           <MenubarContent>
             <MenubarItem>
-              Logs <MenubarShortcut>⌘L</MenubarShortcut>
+              Audit Logs <MenubarShortcut>Ctrl+L</MenubarShortcut>
             </MenubarItem>
+            <MenubarItem>Event Timeline</MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>Contact Us</MenubarItem>
+            <MenubarItem>Packet Decoder</MenubarItem>
+            <MenubarItem>DNS Lookup</MenubarItem>
+            <MenubarItem>Whois Lookup</MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem>Contact Support</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
+
+        {/* ── View ── */}
         <MenubarMenu>
-          <MenubarTrigger>Customize</MenubarTrigger>
+          <MenubarTrigger>View</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>Font Size</MenubarItem>
             <MenubarItem>
-              Add Member<MenubarShortcut>⌘+</MenubarShortcut>
+              Toggle Sidebar <MenubarShortcut>Ctrl+\</MenubarShortcut>
             </MenubarItem>
-            <MenubarItem disabled>Sync Changes</MenubarItem>
+            <MenubarSeparator />
+            <MenubarSub>
+              <MenubarSubTrigger>Theme</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarItem>Light</MenubarItem>
+                <MenubarItem>Dark</MenubarItem>
+                <MenubarItem>System Default</MenubarItem>
+              </MenubarSubContent>
+            </MenubarSub>
+            <MenubarSub>
+              <MenubarSubTrigger>Font Size</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarItem>Small</MenubarItem>
+                <MenubarItem>Default</MenubarItem>
+                <MenubarItem>Large</MenubarItem>
+              </MenubarSubContent>
+            </MenubarSub>
+            <MenubarSeparator />
+            <MenubarItem>Reset Layout</MenubarItem>
+            <MenubarItem>
+              Fullscreen <MenubarShortcut>F11</MenubarShortcut>
+            </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
       </Menubar>

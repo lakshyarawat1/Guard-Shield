@@ -1,0 +1,501 @@
+[
+  {
+    "sid": 1000001,
+    "msg": "SCAN TCP SYN Port Scan",
+    "category": "reconnaissance",
+    "severity": "medium",
+    "impact_score": 5.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "tcp_flags": ["SYN"],
+      "packet_count_threshold": 50,
+      "time_window_secs": 2
+    },
+    "description": "Detects high-frequency TCP connection attempts with SYN flag set from a single source, characteristic of scanning tools like Nmap.",
+    "reference": "MITRE ATT&CK T1046"
+  },
+  {
+    "sid": 1000002,
+    "msg": "SCAN TCP FIN Stealth Scan",
+    "category": "reconnaissance",
+    "severity": "medium",
+    "impact_score": 5.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "tcp_flags": ["FIN"]
+    },
+    "description": "Detects TCP packet with only the FIN flag set. FIN-only packets without established connections are commonly used to bypass firewalls and determine active ports.",
+    "reference": "MITRE ATT&CK T1046"
+  },
+  {
+    "sid": 1000003,
+    "msg": "SCAN TCP Xmas Tree Scan",
+    "category": "reconnaissance",
+    "severity": "high",
+    "impact_score": 6.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "tcp_flags": ["FIN", "PSH", "URG"]
+    },
+    "description": "Detects a TCP packet with FIN, PSH, and URG flags set, which lights up the packet headers like a Christmas tree. Used for stealth scanning.",
+    "reference": "MITRE ATT&CK T1046"
+  },
+  {
+    "sid": 1000004,
+    "msg": "SCAN TCP Null Scan",
+    "category": "reconnaissance",
+    "severity": "medium",
+    "impact_score": 5.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "tcp_flags": []
+    },
+    "description": "Detects a TCP packet with no flags set. Null packets are invalid in normal communication and are used by attackers to fingerprint OS behaviors.",
+    "reference": "MITRE ATT&CK T1046"
+  },
+  {
+    "sid": 1000005,
+    "msg": "SCAN ICMP Ping Sweep",
+    "category": "reconnaissance",
+    "severity": "low",
+    "impact_score": 3.0,
+    "protocol": "ICMP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "N/A",
+    "dst_port": "N/A",
+    "conditions": {
+      "icmp_type": 8,
+      "icmp_code": 0,
+      "packet_count_threshold": 20,
+      "time_window_secs": 1
+    },
+    "description": "Detects rapid ICMP Echo Requests (ping) originating from a single source host directed towards multiple destination hosts.",
+    "reference": "MITRE ATT&CK T1046"
+  },
+  {
+    "sid": 1000006,
+    "msg": "SCAN UDP Port Scan",
+    "category": "reconnaissance",
+    "severity": "medium",
+    "impact_score": 5.0,
+    "protocol": "UDP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "packet_count_threshold": 50,
+      "time_window_secs": 2
+    },
+    "description": "Detects a high rate of UDP packets sent to different destination ports from a single source, typical of UDP reconnaissance scanning.",
+    "reference": "MITRE ATT&CK T1046"
+  },
+  {
+    "sid": 1000011,
+    "msg": "DOS TCP SYN Flood",
+    "category": "dos",
+    "severity": "critical",
+    "impact_score": 9.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "tcp_flags": ["SYN"],
+      "packet_count_threshold": 1000,
+      "time_window_secs": 1
+    },
+    "description": "Detects a massive volume of TCP SYN packets directed at a single destination port without corresponding ACK completion, seeking to exhaust connection queues.",
+    "reference": "CVE-1999-0116"
+  },
+  {
+    "sid": 1000012,
+    "msg": "DOS Ping of Death Attempt",
+    "category": "dos",
+    "severity": "critical",
+    "impact_score": 9.5,
+    "protocol": "ICMP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "N/A",
+    "dst_port": "N/A",
+    "conditions": {
+      "packet_len": ">65507"
+    },
+    "description": "Detects an ICMP packet with a payload length exceeding the maximum allowed size, designed to crash systems upon reassembly.",
+    "reference": "CVE-1999-0128"
+  },
+  {
+    "sid": 1000013,
+    "msg": "DOS UDP Flood Attack",
+    "category": "dos",
+    "severity": "high",
+    "impact_score": 8.0,
+    "protocol": "UDP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "packet_count_threshold": 5000,
+      "time_window_secs": 1
+    },
+    "description": "Detects a deluge of UDP packets aimed at random ports on a target host to saturate system buffers and network bandwidth.",
+    "reference": "MITRE ATT&CK T1498"
+  },
+  {
+    "sid": 1000014,
+    "msg": "DOS ICMP Flood Attack",
+    "category": "dos",
+    "severity": "high",
+    "impact_score": 8.0,
+    "protocol": "ICMP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "N/A",
+    "dst_port": "N/A",
+    "conditions": {
+      "packet_count_threshold": 3000,
+      "time_window_secs": 1
+    },
+    "description": "Detects an excessive rate of ICMP packets sent to a target network node to degrade processing capability.",
+    "reference": "MITRE ATT&CK T1498"
+  },
+  {
+    "sid": 1000021,
+    "msg": "EXPLOIT Insecure Telnet Connection Attempt",
+    "category": "exploit",
+    "severity": "high",
+    "impact_score": 8.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 23,
+    "conditions": {},
+    "description": "Detects connection attempts on Port 23. Telnet transmits all data, including credentials, in plaintext and represents a severe risk in production environments.",
+    "reference": "CWE-319"
+  },
+  {
+    "sid": 1000022,
+    "msg": "EXPLOIT Insecure FTP Connection Attempt",
+    "category": "exploit",
+    "severity": "medium",
+    "impact_score": 6.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 21,
+    "conditions": {},
+    "description": "Detects connection attempts on Port 21. Plaintext FTP allows passive attackers to sniff user login credentials and session payloads.",
+    "reference": "CWE-319"
+  },
+  {
+    "sid": 1000023,
+    "msg": "EXPLOIT RDP Brute Force Attempt",
+    "category": "exploit",
+    "severity": "high",
+    "impact_score": 7.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 3389,
+    "conditions": {
+      "packet_count_threshold": 30,
+      "time_window_secs": 10
+    },
+    "description": "Detects repeated RDP connection requests from a single source host within a brief timeframe, indicating automated brute force password attacks.",
+    "reference": "MITRE ATT&CK T1110.001"
+  },
+  {
+    "sid": 1000024,
+    "msg": "EXPLOIT SSH Brute Force Attempt",
+    "category": "exploit",
+    "severity": "medium",
+    "impact_score": 6.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 22,
+    "conditions": {
+      "packet_count_threshold": 40,
+      "time_window_secs": 10
+    },
+    "description": "Detects multiple high-frequency SSH connection sequences, a strong signature of credential stuffing or brute force attempts targeting shell access.",
+    "reference": "MITRE ATT&CK T1110.001"
+  },
+  {
+    "sid": 1000025,
+    "msg": "EXPLOIT SMB Exploit Attempt (EternalBlue)",
+    "category": "exploit",
+    "severity": "critical",
+    "impact_score": 9.8,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 445,
+    "conditions": {
+      "payload_pattern": "\\xffSMB\\x72"
+    },
+    "description": "Detects Windows SMB negotiation patterns or known exploit strings corresponding to MS17-010 (EternalBlue) remote code execution vulnerability.",
+    "reference": "CVE-2017-0144"
+  },
+  {
+    "sid": 1000026,
+    "msg": "EXPLOIT Bash Shellshock Remote Code Execution",
+    "category": "exploit",
+    "severity": "critical",
+    "impact_score": 9.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "() { :;};"
+    },
+    "description": "Detects the Bash environment variable function definition vulnerability, which allows remote command injection through HTTP headers or CGI scripts.",
+    "reference": "CVE-2014-6271"
+  },
+  {
+    "sid": 1000027,
+    "msg": "EXPLOIT Log4Shell JNDI Lookup Attempt",
+    "category": "exploit",
+    "severity": "critical",
+    "impact_score": 10.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "${jndi:"
+    },
+    "description": "Detects JNDI lookup injections (e.g., LDAP/RMI urls) inside packet payloads targeting Apache Log4j loggers to trigger remote class loading and execution.",
+    "reference": "CVE-2021-44228"
+  },
+  {
+    "sid": 1000028,
+    "msg": "EXPLOIT SQL Injection (SQLi) Signature Match",
+    "category": "exploit",
+    "severity": "high",
+    "impact_score": 8.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "UNION SELECT"
+    },
+    "description": "Detects classic SQL database injection syntax (e.g. UNION SELECT queries) passed via plaintext application protocols like HTTP.",
+    "reference": "OWASP Top 10 A03:2021"
+  },
+  {
+    "sid": 1000029,
+    "msg": "EXPLOIT Cross-Site Scripting (XSS) Signature Match",
+    "category": "exploit",
+    "severity": "medium",
+    "impact_score": 6.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "<script>"
+    },
+    "description": "Detects script tags or inline events in request payloads, indicative of attempts to inject persistent or reflected client-side HTML injections.",
+    "reference": "OWASP Top 10 A03:2021"
+  },
+  {
+    "sid": 1000030,
+    "msg": "EXPLOIT Path Traversal Attempt",
+    "category": "exploit",
+    "severity": "high",
+    "impact_score": 7.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "../etc/passwd"
+    },
+    "description": "Detects file system traversal characters attempting to access sensitive Linux system credential stores like /etc/passwd.",
+    "reference": "MITRE ATT&CK T1083"
+  },
+  {
+    "sid": 1000041,
+    "msg": "MALWARE Cryptomining Stratum Connection",
+    "category": "malware_c2",
+    "severity": "medium",
+    "impact_score": 6.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "mining.subscribe"
+    },
+    "description": "Detects Stratum JSON-RPC communication patterns characteristic of Monero (XMRIG) or Bitcoin mining pool operations.",
+    "reference": "MITRE ATT&CK T1496"
+  },
+  {
+    "sid": 1000042,
+    "msg": "MALWARE Tor Network Node Outbound Traffic",
+    "category": "malware_c2",
+    "severity": "medium",
+    "impact_score": 5.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 9001,
+    "conditions": {},
+    "description": "Detects outbound connections pointing to port 9001, which is commonly configured as the default listener for Tor directory and relay servers.",
+    "reference": "MITRE ATT&CK T1090.003"
+  },
+  {
+    "sid": 1000043,
+    "msg": "MALWARE WannaCry Ransomware Killswitch Call",
+    "category": "malware_c2",
+    "severity": "critical",
+    "impact_score": 10.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 80,
+    "conditions": {
+      "payload_pattern": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+    },
+    "description": "Detects requests targeting the WannaCry ransomware killswitch domain. Triggers represent active infestation or detonation of the cryptoworm.",
+    "reference": "CVE-2017-0144"
+  },
+  {
+    "sid": 1000044,
+    "msg": "MALWARE Cobalt Strike Beacon Communication",
+    "category": "malware_c2",
+    "severity": "critical",
+    "impact_score": 9.5,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "/submit.php?id="
+    },
+    "description": "Detects URI request structure typical of Cobalt Strike listener configurations submitting beacon telemetry to command and control hosts.",
+    "reference": "MITRE ATT&CK T1071.001"
+  },
+  {
+    "sid": 1000045,
+    "msg": "MALWARE Metasploit Meterpreter Reverse Shell",
+    "category": "malware_c2",
+    "severity": "critical",
+    "impact_score": 9.8,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "payload_pattern": "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02"
+    },
+    "description": "Detects binary sequence headers corresponding to the initiation handshake of a Metasploit framework reverse TCP shell.",
+    "reference": "MITRE ATT&CK T1059"
+  },
+  {
+    "sid": 1000051,
+    "msg": "ANOMALY Plaintext HTTP Basic Credentials",
+    "category": "protocol_anomaly",
+    "severity": "medium",
+    "impact_score": 5.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": 80,
+    "conditions": {
+      "payload_pattern": "Authorization: Basic"
+    },
+    "description": "Detects plaintext basic auth headers transmitted over unencrypted HTTP protocol sessions, allowing passive network eavesdropping.",
+    "reference": "CWE-522"
+  },
+  {
+    "sid": 1000052,
+    "msg": "ANOMALY Anomalously Low Time To Live (TTL)",
+    "category": "protocol_anomaly",
+    "severity": "low",
+    "impact_score": 2.5,
+    "protocol": "IP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "ttl": "<=2"
+    },
+    "description": "Detects packets arriving with a TTL field value of 2 or less, indicating potential routing loops, network misconfigurations, or TTL expiry scanning.",
+    "reference": "RFC 791"
+  },
+  {
+    "sid": 1000053,
+    "msg": "ANOMALY Invalid TCP Flags Combo (SYN/FIN)",
+    "category": "protocol_anomaly",
+    "severity": "high",
+    "impact_score": 7.0,
+    "protocol": "TCP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "tcp_flags": ["SYN", "FIN"]
+    },
+    "description": "Detects a TCP packet with both SYN and FIN flags set. This combination is impossible in standard TCP transitions and is used to confuse packet filters.",
+    "reference": "RFC 793"
+  },
+  {
+    "sid": 1000054,
+    "msg": "ANOMALY Oversized Ethernet Frame",
+    "category": "protocol_anomaly",
+    "severity": "low",
+    "impact_score": 2.0,
+    "protocol": "IP",
+    "src_ip": "any",
+    "dst_ip": "any",
+    "src_port": "any",
+    "dst_port": "any",
+    "conditions": {
+      "packet_len": ">1500"
+    },
+    "description": "Detects standard IP frame sizes exceeding the MTU limit of 1500 bytes, which can trigger fragmentation reassembly overhead and potential evasion bypasses.",
+    "reference": "RFC 894"
+  }
+]
