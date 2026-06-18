@@ -27,10 +27,14 @@ async function openProfileWindow() {
       console.log('Window created successfully');
     });
     win.once('tauri://error', function (e) {
-      alert('Tauri Error: ' + JSON.stringify(e));
+      // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
+      console.error('Tauri Error:', e);
+      alert('Failed to open window due to an internal error.');
     });
   } catch (e: any) {
-    alert("Error opening window: " + (e.message || JSON.stringify(e)));
+    // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
+    console.error("Error opening window:", e);
+    alert("Failed to open window.");
   }
 }
 
@@ -46,10 +50,14 @@ async function openCreateRuleWindow() {
       console.log('Window created successfully');
     });
     win.once('tauri://error', function (e) {
-      alert('Tauri Error: ' + JSON.stringify(e));
+      // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
+      console.error('Tauri Error:', e);
+      alert('Failed to open window due to an internal error.');
     });
   } catch (e: any) {
-    alert("Error opening window: " + (e.message || JSON.stringify(e)));
+    // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
+    console.error("Error opening window:", e);
+    alert("Failed to open window.");
   }
 }
 
@@ -65,10 +73,14 @@ export const openGeneralSettingsWindow = async () => {
       console.log('Window created successfully');
     });
     win.once('tauri://error', function (e) {
-      alert('Tauri Error: ' + JSON.stringify(e));
+      // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
+      console.error('Tauri Error:', e);
+      alert('Failed to open window due to an internal error.');
     });
   } catch (e: any) {
-    alert("Error opening window: " + (e.message || JSON.stringify(e)));
+    // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
+    console.error("Error opening window:", e);
+    alert("Failed to open window.");
   }
 };
 
