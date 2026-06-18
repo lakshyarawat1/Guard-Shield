@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 async function openProfileWindow() {
   try {
@@ -86,12 +87,45 @@ export const openGeneralSettingsWindow = async () => {
 
 export function Header() {
   const [isCapturing, setIsCapturing] = useState<boolean>(() => {
-    const saved = localStorage.getItem("guard_shield_is_capturing");
-    return saved ? saved === "true" : true;
+    return localStorage.getItem("guard_shield_is_capturing") === "true";
   });
+  
+  const [customRules, setCustomRules] = useState<{id: number, name: string, is_active: boolean}[]>([]);
+
+  useEffect(() => {
+    // Fetch rules periodically or on mount
+    const fetchRules = async () => {
+      try {
+        const rules = await invoke<{id: number, name: string, is_active: boolean}[]>("fetch_custom_rules");
+        setCustomRules(rules);
+      } catch (e) { console.error("Failed to fetch custom rules in header", e); }
+    };
+    
+    fetchRules();
+    
+    // Poll rules every 2 seconds to keep header in sync with CreateRule page
+    const interval = setInterval(fetchRules, 2000);
+    return () => clearInterval(interval);
+  }, []);
   
   const [threatCount, setThreatCount] = useState<number>(0);
   const [packetRate, setPacketRate] = useState<number>(0);
+  const [interfaces, setInterfaces] = useState<string[]>([]);
+  const [selectedInterface, setSelectedInterface] = useState<string>(() => localStorage.getItem("guard_shield_interface") || "");
+
+  useEffect(() => {
+    invoke<string[]>("get_network_interfaces").then(ifaces => {
+      setInterfaces(ifaces);
+      if (ifaces.length > 0) {
+        let savedIface = localStorage.getItem("guard_shield_interface");
+        if (!savedIface || !ifaces.includes(savedIface)) {
+          savedIface = ifaces.find((i) => !i.toLowerCase().includes("loopback")) || ifaces[0];
+          localStorage.setItem("guard_shield_interface", savedIface);
+        }
+        setSelectedInterface(savedIface);
+      }
+    }).catch(console.error);
+  }, []);
 
   useEffect(() => {
     let unlistenAlert: () => void;
@@ -195,23 +229,68 @@ export function Header() {
                 className="flex items-center gap-2 px-4 cursor-pointer"
                 variant="outline"
               >
-                Default <ChevronDown className="size-4" />{" "}
+                {customRules.filter(r => r.is_active).length > 0 
+                  ? `${customRules.filter(r => r.is_active).length} Rules Active` 
+                  : "No Rules Active"} <ChevronDown className="size-4" />{" "}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-[20rem]">
               <DropdownMenuItem onSelect={openCreateRuleWindow} className="justify-center text-primary font-medium cursor-pointer">
-                + Create Custom Rule...
+                + Manage Custom Rules
               </DropdownMenuItem>
               <Separator className="my-1" />
-              <DropdownMenuItem className="justify-center text-muted-foreground" disabled>
-                No Custom Rules Found
-              </DropdownMenuItem>
+              {customRules.length === 0 ? (
+                <DropdownMenuItem className="justify-center text-muted-foreground" disabled>
+                  No Custom Rules Found
+                </DropdownMenuItem>
+              ) : (
+                customRules.map(rule => (
+                  <DropdownMenuItem 
+                    key={rule.id} 
+                    className="flex items-center justify-between cursor-pointer"
+                    onSelect={(e) => {
+                      e.preventDefault(); // Don't close dropdown on toggle
+                      invoke("toggle_custom_rule_state", { id: rule.id, isActive: !rule.is_active });
+                    }}
+                  >
+                    <span className={rule.is_active ? "text-foreground" : "text-muted-foreground line-through"}>
+                      {rule.name}
+                    </span>
+                    <Badge variant={rule.is_active ? "default" : "outline"} className="text-[10px]">
+                      {rule.is_active ? "ON" : "OFF"}
+                    </Badge>
+                  </DropdownMenuItem>
+                ))
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
           <div className="hidden md:flex items-center gap-3 mr-4">
+            <div className="flex items-center gap-2">
+              <Select value={selectedInterface} onValueChange={(val) => {
+                setSelectedInterface(val);
+                localStorage.setItem("guard_shield_interface", val);
+                if (isCapturing) {
+                  invoke("stop_packet_capture").then(() => {
+                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch(console.error);
+                  });
+                }
+              }}>
+                <SelectTrigger className="w-[180px] h-7 text-xs bg-muted/50 border-border/40 focus:ring-0">
+                  <SelectValue placeholder="Select Interface" />
+                </SelectTrigger>
+                <SelectContent>
+                  {interfaces.map((iface) => (
+                    <SelectItem key={iface} value={iface} className="text-xs">
+                      {iface}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Separator orientation="vertical" className="h-4" />
             <div className="flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${isCapturing ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
               <span className={`text-xs font-medium ${isCapturing ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
