@@ -1,4 +1,4 @@
-import { Clock, Info, ShieldBan, Eye, XCircle, ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react";
+import { Clock, Info, ShieldBan, Eye, XCircle, ArrowUpDown, ArrowDown, ArrowUp, Network } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -34,6 +34,8 @@ interface AlertData {
   protocol: string;
   info: string;
   payload: string;
+  src_country: string;
+  dst_country: string;
 }
 
 interface TelemetryStats {
@@ -362,6 +364,42 @@ const Monitoring = () => {
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="font-semibold text-muted-foreground">Protocol</span>
                   <span className="col-span-3">{selectedAlert.protocol}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground">GeoIP Origin</span>
+                  <span className="col-span-3 flex items-center gap-2">
+                    {selectedAlert.src_country === "LOCAL" ? (
+                      <div className="flex items-center gap-1.5 text-blue-500 font-medium">
+                        <Network className="h-3.5 w-3.5" /> Local Network
+                      </div>
+                    ) : selectedAlert.src_country ? (
+                      <>
+                        <img 
+                          src={`https://flagcdn.com/16x12/${selectedAlert.src_country.toLowerCase()}.png`} 
+                          alt={selectedAlert.src_country} 
+                          className="h-3 w-4 rounded-sm border" 
+                        /> 
+                        {selectedAlert.src_country}
+                      </>
+                    ) : "Unknown"}
+                    
+                    <span className="text-muted-foreground mx-1">→</span>
+                    
+                    {selectedAlert.dst_country === "LOCAL" ? (
+                      <div className="flex items-center gap-1.5 text-blue-500 font-medium">
+                        <Network className="h-3.5 w-3.5" /> Local Network
+                      </div>
+                    ) : selectedAlert.dst_country ? (
+                      <>
+                        <img 
+                          src={`https://flagcdn.com/16x12/${selectedAlert.dst_country.toLowerCase()}.png`} 
+                          alt={selectedAlert.dst_country} 
+                          className="h-3 w-4 rounded-sm border" 
+                        /> 
+                        {selectedAlert.dst_country}
+                      </>
+                    ) : "Unknown"}
+                  </span>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="font-semibold text-muted-foreground">Port</span>

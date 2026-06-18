@@ -2,7 +2,7 @@ import { Badge } from "../ui/badge";
 import { TableCell, TableHead } from "../ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
-import { ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowUpDown, ArrowDown, ArrowUp, Network } from "lucide-react";
 import { Header } from "./Header";
 import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
@@ -272,13 +272,14 @@ export default function LiveTraffic() {
                         <div className="flex items-center justify-center">Source IP {renderSortIcon("Source IP")}</div>
                       </TableHead>
                       <TableHead 
-                        className="w-[13%] text-xs uppercase tracking-wider cursor-pointer hover:bg-muted/60 transition-colors select-none"
+                        className="w-[12%] text-xs uppercase tracking-wider cursor-pointer hover:bg-muted/60 transition-colors select-none"
                         onClick={() => requestSort("Destination IP")}
                       >
                         <div className="flex items-center justify-center">Destination IP {renderSortIcon("Destination IP")}</div>
                       </TableHead>
+                      <TableHead className="w-[10%] text-xs uppercase tracking-wider text-center">Geo</TableHead>
                       <TableHead 
-                        className="w-[20%] text-xs uppercase tracking-wider cursor-pointer hover:bg-muted/60 transition-colors select-none"
+                        className="w-[15%] text-xs uppercase tracking-wider cursor-pointer hover:bg-muted/60 transition-colors select-none"
                         onClick={() => requestSort("Timestamp")}
                       >
                         <div className="flex items-center justify-center">Timestamp {renderSortIcon("Timestamp")}</div>
@@ -307,6 +308,31 @@ export default function LiveTraffic() {
                       </TableCell>
                       <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">{packet.ip_src?.[0] || ""}</TableCell>
                       <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">{packet.ip_dst?.[0] || ""}</TableCell>
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-[16px] flex justify-center">
+                            {packet.src_country?.[0] === "LOCAL" ? (
+                              <div className="h-3 w-4 rounded-sm bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500" title="Local Network">
+                                <Network className="h-2.5 w-2.5" />
+                              </div>
+                            ) : packet.src_country?.[0] && packet.src_country[0] !== "Unknown" ? (
+                              <img src={`https://flagcdn.com/16x12/${packet.src_country[0].toLowerCase()}.png`} title={packet.src_country[0]} className="h-3 w-4 rounded-sm opacity-80" />
+                            ) : <div className="h-3 w-4 rounded-sm bg-muted border border-border flex items-center justify-center" title="Unknown"><span className="text-[8px] text-muted-foreground leading-none">?</span></div>}
+                          </div>
+                          
+                          <span className="text-[10px] text-muted-foreground leading-none">▶</span>
+                          
+                          <div className="w-[16px] flex justify-center">
+                            {packet.dst_country?.[0] === "LOCAL" ? (
+                              <div className="h-3 w-4 rounded-sm bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500" title="Local Network">
+                                <Network className="h-2.5 w-2.5" />
+                              </div>
+                            ) : packet.dst_country?.[0] && packet.dst_country[0] !== "Unknown" ? (
+                              <img src={`https://flagcdn.com/16x12/${packet.dst_country[0].toLowerCase()}.png`} title={packet.dst_country[0]} className="h-3 w-4 rounded-sm opacity-80" />
+                            ) : <div className="h-3 w-4 rounded-sm bg-muted border border-border flex items-center justify-center" title="Unknown"><span className="text-[8px] text-muted-foreground leading-none">?</span></div>}
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">
                         {packet.frame_time?.[0] || ""}
                       </TableCell>
@@ -342,6 +368,34 @@ export default function LiveTraffic() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <span className="font-semibold text-muted-foreground">Destination</span>
                 <span className="col-span-3">{selectedPacket.ip_dst?.[0]}:{selectedPacket.tcp_dstport?.[0] || selectedPacket.udp_dstport?.[0] || "*"}</span>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <span className="font-semibold text-muted-foreground">GeoIP Origin</span>
+                <span className="col-span-3 flex items-center gap-2">
+                  {selectedPacket.src_country?.[0] === "LOCAL" ? (
+                    <div className="flex items-center gap-1.5 text-blue-500 font-medium">
+                      <Network className="h-3.5 w-3.5" /> Local Network
+                    </div>
+                  ) : selectedPacket.src_country?.[0] ? (
+                    <>
+                      <img src={`https://flagcdn.com/16x12/${selectedPacket.src_country[0].toLowerCase()}.png`} className="h-3 w-4 rounded-sm border" />
+                      {selectedPacket.src_country[0]}
+                    </>
+                  ) : "Unknown"}
+                  
+                  <span className="text-muted-foreground mx-1">→</span>
+                  
+                  {selectedPacket.dst_country?.[0] === "LOCAL" ? (
+                    <div className="flex items-center gap-1.5 text-blue-500 font-medium">
+                      <Network className="h-3.5 w-3.5" /> Local Network
+                    </div>
+                  ) : selectedPacket.dst_country?.[0] ? (
+                    <>
+                      <img src={`https://flagcdn.com/16x12/${selectedPacket.dst_country[0].toLowerCase()}.png`} className="h-3 w-4 rounded-sm border" />
+                      {selectedPacket.dst_country[0]}
+                    </>
+                  ) : "Unknown"}
+                </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <span className="font-semibold text-muted-foreground">Protocol</span>

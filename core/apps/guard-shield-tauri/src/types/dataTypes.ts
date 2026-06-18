@@ -14,5 +14,7 @@ export type PacketType = {
   eth_src: string[];
   eth_dst: string[];
   payload: string[];
+  src_country: string[];
+  dst_country: string[];
   is_flagged?: boolean;
 };
