@@ -8,7 +8,7 @@ import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
 import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TableVirtuoso } from "react-virtuoso";
@@ -98,60 +98,68 @@ export default function LiveTraffic() {
     };
   }, []);
 
-  const filteredPackets = packets.filter((p) => {
-    if (filterProto !== "All") {
-      const pNum = p.ip_proto?.[0];
-      const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
-      if (pName !== filterProto) return false;
-    }
-    if (filterSrcIp && p.ip_src?.[0] && !p.ip_src[0].includes(filterSrcIp)) return false;
-    if (filterDstIp && p.ip_dst?.[0] && !p.ip_dst[0].includes(filterDstIp)) return false;
-    if (filterPort) {
-      const srcP = p.tcp_srcport?.[0] || p.udp_srcport?.[0] || "";
-      const dstP = p.tcp_dstport?.[0] || p.udp_dstport?.[0] || "";
-      if (!srcP.includes(filterPort) && !dstP.includes(filterPort)) return false;
-    }
-    return true;
-  });
-
-  const sortedPackets = [...filteredPackets];
-  if (sortConfig !== null) {
-    sortedPackets.sort((a, b) => {
-      let valA: string | number = "";
-      let valB: string | number = "";
-      
-      switch (sortConfig.key) {
-        case "Protocol":
-          valA = a.ip_proto?.[0] ? protocolNames[Number(a.ip_proto[0]) as keyof typeof protocolNames] || a.ip_proto[0] : "";
-          valB = b.ip_proto?.[0] ? protocolNames[Number(b.ip_proto[0]) as keyof typeof protocolNames] || b.ip_proto[0] : "";
-          break;
-        case "Source IP":
-          valA = a.ip_src?.[0] || "";
-          valB = b.ip_src?.[0] || "";
-          break;
-        case "Destination IP":
-          valA = a.ip_dst?.[0] || "";
-          valB = b.ip_dst?.[0] || "";
-          break;
-        case "Timestamp":
-          valA = a.frame_time?.[0] ? new Date(a.frame_time[0]).getTime() : 0;
-          valB = b.frame_time?.[0] ? new Date(b.frame_time[0]).getTime() : 0;
-          break;
-        case "TCP Source Port":
-          valA = Number(a.tcp_srcport?.[0] || a.udp_srcport?.[0] || 0);
-          valB = Number(b.tcp_srcport?.[0] || b.udp_srcport?.[0] || 0);
-          break;
-        case "TCP Destination Port":
-          valA = Number(a.tcp_dstport?.[0] || a.udp_dstport?.[0] || 0);
-          valB = Number(b.udp_dstport?.[0] || b.udp_dstport?.[0] || 0);
-          break;
+  const filteredPackets = useMemo(() => {
+    // Performance improvement: Memoize filtering to prevent O(n) operation on every render
+    // especially important when packet array grows up to 10000 items
+    return packets.filter((p) => {
+      if (filterProto !== "All") {
+        const pNum = p.ip_proto?.[0];
+        const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
+        if (pName !== filterProto) return false;
       }
-
-      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+      if (filterSrcIp && p.ip_src?.[0] && !p.ip_src[0].includes(filterSrcIp)) return false;
+      if (filterDstIp && p.ip_dst?.[0] && !p.ip_dst[0].includes(filterDstIp)) return false;
+      if (filterPort) {
+        const srcP = p.tcp_srcport?.[0] || p.udp_srcport?.[0] || "";
+        const dstP = p.tcp_dstport?.[0] || p.udp_dstport?.[0] || "";
+        if (!srcP.includes(filterPort) && !dstP.includes(filterPort)) return false;
+      }
+      return true;
     });
-  }
+  }, [packets, filterProto, filterSrcIp, filterDstIp, filterPort]);
+
+  const sortedPackets = useMemo(() => {
+    // Performance improvement: Memoize sorting to prevent O(n log n) operation on every render
+    const sorted = [...filteredPackets];
+    if (sortConfig !== null) {
+      sorted.sort((a, b) => {
+        let valA: string | number = "";
+        let valB: string | number = "";
+
+        switch (sortConfig.key) {
+          case "Protocol":
+            valA = a.ip_proto?.[0] ? protocolNames[Number(a.ip_proto[0]) as keyof typeof protocolNames] || a.ip_proto[0] : "";
+            valB = b.ip_proto?.[0] ? protocolNames[Number(b.ip_proto[0]) as keyof typeof protocolNames] || b.ip_proto[0] : "";
+            break;
+          case "Source IP":
+            valA = a.ip_src?.[0] || "";
+            valB = b.ip_src?.[0] || "";
+            break;
+          case "Destination IP":
+            valA = a.ip_dst?.[0] || "";
+            valB = b.ip_dst?.[0] || "";
+            break;
+          case "Timestamp":
+            valA = a.frame_time?.[0] ? new Date(a.frame_time[0]).getTime() : 0;
+            valB = b.frame_time?.[0] ? new Date(b.frame_time[0]).getTime() : 0;
+            break;
+          case "TCP Source Port":
+            valA = Number(a.tcp_srcport?.[0] || a.udp_srcport?.[0] || 0);
+            valB = Number(b.tcp_srcport?.[0] || b.udp_srcport?.[0] || 0);
+            break;
+          case "TCP Destination Port":
+            valA = Number(a.tcp_dstport?.[0] || a.udp_dstport?.[0] || 0);
+            valB = Number(b.udp_dstport?.[0] || b.udp_dstport?.[0] || 0);
+            break;
+        }
+
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sorted;
+  }, [filteredPackets, sortConfig]);
 
   const renderSortIcon = (key: string) => {
     if (sortConfig?.key === key) {
