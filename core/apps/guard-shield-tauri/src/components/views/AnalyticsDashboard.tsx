@@ -40,6 +40,12 @@ interface TelemetryStats {
 export default function AnalyticsDashboard() {
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
+  const [trafficHistory, setTrafficHistory] = useState<{ time: string, pkts: number }[]>(() => {
+    return Array.from({ length: 60 }).map((_, i) => ({
+      time: new Date(Date.now() - (59 - i) * 1000).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' }),
+      pkts: 0
+    }));
+  });
 
   useEffect(() => {
     const fetchTelemetry = async () => {
@@ -55,6 +61,9 @@ export default function AnalyticsDashboard() {
     fetchTelemetry();
 
     let unlistenFn: (() => void) | undefined;
+    let unlistenPackets: (() => void) | undefined;
+    let packetCountInSec = 0;
+
     const setupListener = async () => {
       unlistenFn = await listen<AlertData>("intrusion-alert", (event) => {
         setAlerts((prev) => [event.payload, ...prev].slice(0, 1000));
@@ -63,11 +72,26 @@ export default function AnalyticsDashboard() {
           last_24h_alerts: prev.last_24h_alerts + 1
         }));
       });
+      unlistenPackets = await listen<any[]>("packets-batch", (event) => {
+        packetCountInSec += event.payload.length;
+      });
     };
     setupListener();
 
+    const interval = setInterval(() => {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
+      setTrafficHistory(prev => {
+        const next = [...prev.slice(1), { time: timeStr, pkts: packetCountInSec }];
+        packetCountInSec = 0;
+        return next;
+      });
+    }, 1000);
+
     return () => {
       if (unlistenFn) unlistenFn();
+      if (unlistenPackets) unlistenPackets();
+      clearInterval(interval);
     };
   }, []);
 
@@ -237,8 +261,31 @@ export default function AnalyticsDashboard() {
                 )}
               </div>
             </div>
-            <div className="col-span-2">
-               {/* Reserved for future analytics widgets or top talkers */}
+            <div className="col-span-2 p-5 rounded-xl border bg-card shadow-sm flex flex-col">
+              <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
+                <Activity className="size-5 text-chart-2" />
+                Live Traffic Volume (Last 60s)
+              </h3>
+              <div className="flex-1 min-h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trafficHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorPkts" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--chart-2)" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="var(--chart-2)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="time" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} minTickGap={30} />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <RechartsTooltip
+                      contentStyle={{ backgroundColor: "var(--popover)", borderColor: "var(--border)", borderRadius: "8px", color: "var(--popover-foreground)" }}
+                      itemStyle={{ color: "var(--chart-2)" }}
+                    />
+                    <Area type="basis" dataKey="pkts" name="Packets/sec" stroke="var(--chart-2)" strokeWidth={3} fillOpacity={1} fill="url(#colorPkts)" isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 

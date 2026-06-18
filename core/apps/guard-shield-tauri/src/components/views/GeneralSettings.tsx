@@ -1,8 +1,28 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Settings, Shield, HardDrive, Cpu, Save } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 
 export default function GeneralSettings() {
+  const [isClearing, setIsClearing] = useState(false);
+
+  const handleClearDb = async () => {
+    if (!window.confirm("Are you sure you want to clear all local logs? This will delete all packets and alerts, and shrink the database file size.")) {
+      return;
+    }
+    try {
+      setIsClearing(true);
+      await invoke("clear_database");
+      alert("Local logs successfully cleared.");
+    } catch (e) {
+      console.error("Failed to clear local logs", e);
+      alert("Error: " + e);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground p-8">
       <div className="max-w-4xl mx-auto w-full">
@@ -106,8 +126,13 @@ export default function GeneralSettings() {
               </div>
               
               <div className="pt-2">
-                <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-white">
-                  Clear All Local Logs
+                <Button 
+                  variant="outline" 
+                  className="text-destructive border-destructive hover:bg-destructive hover:text-white"
+                  onClick={handleClearDb}
+                  disabled={isClearing}
+                >
+                  {isClearing ? "Clearing..." : "Clear All Local Logs"}
                 </Button>
               </div>
             </div>

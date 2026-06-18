@@ -116,7 +116,10 @@ const Sidebar = () => {
         <AccordionItem value="System">
           <AccordionTrigger>System</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate("/system-health")}
+            >
               <HeartPulse className="size-4" />
               <span>System Health</span>
             </div>

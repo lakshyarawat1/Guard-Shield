@@ -7,6 +7,7 @@ import CreateRule from "./components/views/CreateRule";
 import ContactUs from "./components/views/ContactUs";
 import GeneralSettings from "./components/views/GeneralSettings";
 import SuspiciousTraffic from "./components/views/SuspiciousTraffic";
+import SystemHealth from "./components/views/SystemHealth";
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
       <Route path="/profile" element={<Profile />} />
       <Route path="/create-rule" element={<CreateRule />} />
       <Route path="/contact" element={<ContactUs />} />
+      <Route path="/system-health" element={<SystemHealth />} />
     </Routes>
   );
 }
