@@ -23,6 +23,7 @@ import {
 import { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { HexViewer } from "./HexViewer";
 
 interface AlertData {
   id: number;
@@ -32,6 +33,7 @@ interface AlertData {
   port: string;
   protocol: string;
   info: string;
+  payload: string;
 }
 
 interface TelemetryStats {
@@ -391,6 +393,14 @@ const Monitoring = () => {
                     {selectedAlert.info}
                   </div>
                 </div>
+
+                {selectedAlert.payload && (
+                  <div className="mt-4">
+                    <span className="font-semibold text-muted-foreground mb-2 block">Deep Packet Inspection (DPI)</span>
+                    <HexViewer payloadHex={selectedAlert.payload} />
+                  </div>
+                )}
+
                 <div className="mt-4 flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setSelectedAlert(null)}>Close</Button>
                   <Button 

@@ -1412,6 +1412,7 @@ dependencies = [
  "crossbeam-channel",
  "dirs",
  "get_if_addrs",
+ "hex",
  "rusqlite",
  "serde",
  "serde_json",

@@ -12,6 +12,8 @@ import React, { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TableVirtuoso } from "react-virtuoso";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { HexViewer } from "./HexViewer";
 
 const getProtocolColor = (proto: string | undefined) => {
   if (!proto) return "bg-gray-500";
@@ -27,8 +29,6 @@ const getProtocolColor = (proto: string | undefined) => {
 export default function LiveTraffic() {
   const [packets, setPackets] = useState<PacketType[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [interfaces, setInterfaces] = useState<string[]>([]);
-  const [selectedInterface, setSelectedInterface] = useState<string>("");
 
   const [filterProto, setFilterProto] = useState<string>("All");
   const [filterSrcIp, setFilterSrcIp] = useState<string>("");
@@ -36,6 +36,7 @@ export default function LiveTraffic() {
   const [filterPort, setFilterPort] = useState<string>("");
 
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [selectedPacket, setSelectedPacket] = useState<PacketType | null>(null);
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -52,21 +53,6 @@ export default function LiveTraffic() {
         setPackets(hist);
       } catch (e) {
         console.error("Failed to fetch historical packets", e);
-      }
-
-      try {
-        const ifaces = await invoke<string[]>("get_network_interfaces");
-        setInterfaces(ifaces);
-        if (ifaces.length > 0) {
-          let savedIface = localStorage.getItem("guard_shield_interface");
-          if (!savedIface || !ifaces.includes(savedIface)) {
-            savedIface = ifaces.find((i) => !i.toLowerCase().includes("loopback")) || ifaces[0];
-            localStorage.setItem("guard_shield_interface", savedIface);
-          }
-          setSelectedInterface(savedIface);
-        }
-      } catch (e) {
-        console.error("Failed to fetch interfaces", e);
       }
     };
     fetchInterfacesAndHistory();
@@ -179,30 +165,6 @@ export default function LiveTraffic() {
         <div className="m-1 p-4 flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-black tracking-tighter">IDS / IPS</h1>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Interface:</span>
-              <Select value={selectedInterface} onValueChange={(val) => {
-                setSelectedInterface(val);
-                localStorage.setItem("guard_shield_interface", val);
-                // Restart capture globally to use new interface if currently capturing
-                if (localStorage.getItem("guard_shield_is_capturing") === "true") {
-                  invoke("stop_packet_capture").then(() => {
-                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch(console.error);
-                  });
-                }
-              }}>
-                <SelectTrigger className="w-[180px] bg-background">
-                  <SelectValue placeholder="Select Interface" />
-                </SelectTrigger>
-                <SelectContent>
-                  {interfaces.map((iface) => (
-                    <SelectItem key={iface} value={iface}>
-                      {iface}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <div className="my-4">
             <div className="flex flex-col min-h-0">
@@ -338,23 +300,23 @@ export default function LiveTraffic() {
                   )}
                   itemContent={(_index, packet) => (
                     <>
-                      <TableCell>
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">
                         <Badge className={getProtocolColor(packet.ip_proto?.[0])}>
                           {packet.ip_proto?.[0] ? protocolNames[Number(packet.ip_proto[0]) as keyof typeof protocolNames] || packet.ip_proto[0] : "N/A"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{packet.ip_src?.[0] || ""}</TableCell>
-                      <TableCell>{packet.ip_dst?.[0] || ""}</TableCell>
-                      <TableCell>
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">{packet.ip_src?.[0] || ""}</TableCell>
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">{packet.ip_dst?.[0] || ""}</TableCell>
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="cursor-pointer">
                         {packet.frame_time?.[0] || ""}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="text-center cursor-pointer">
                         {packet.tcp_srcport?.[0] || packet.udp_srcport?.[0] || ""}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="text-center cursor-pointer">
                         {packet.tcp_dstport?.[0] || packet.udp_dstport?.[0] || ""}
                       </TableCell>
-                      <TableCell className="w-56 truncate">
+                      <TableCell onClick={() => setSelectedPacket(packet)} className="w-56 truncate cursor-pointer">
                         {packet._ws_col_info?.[0] || ""}
                       </TableCell>
                     </>
@@ -365,6 +327,45 @@ export default function LiveTraffic() {
           </div>
         </div>
       </div>
+
+      <Dialog open={selectedPacket !== null} onOpenChange={(open) => !open && setSelectedPacket(null)}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>Deep Packet Inspection</DialogTitle>
+          </DialogHeader>
+          {selectedPacket && (
+            <div className="grid gap-4 py-4 text-sm">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <span className="font-semibold text-muted-foreground">Source</span>
+                <span className="col-span-3">{selectedPacket.ip_src?.[0]}:{selectedPacket.tcp_srcport?.[0] || selectedPacket.udp_srcport?.[0] || "*"}</span>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <span className="font-semibold text-muted-foreground">Destination</span>
+                <span className="col-span-3">{selectedPacket.ip_dst?.[0]}:{selectedPacket.tcp_dstport?.[0] || selectedPacket.udp_dstport?.[0] || "*"}</span>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <span className="font-semibold text-muted-foreground">Protocol</span>
+                <span className="col-span-3">{selectedPacket.ip_proto?.[0] ? protocolNames[Number(selectedPacket.ip_proto[0]) as keyof typeof protocolNames] || selectedPacket.ip_proto[0] : "N/A"}</span>
+              </div>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <span className="font-semibold text-muted-foreground">Info</span>
+                <span className="col-span-3 bg-muted p-2 rounded text-xs break-all">{selectedPacket._ws_col_info?.[0]}</span>
+              </div>
+              
+              <div className="mt-2">
+                <span className="font-semibold text-muted-foreground mb-2 block">Raw Payload Dump</span>
+                {selectedPacket.payload?.[0] ? (
+                  <HexViewer payloadHex={selectedPacket.payload[0]} />
+                ) : (
+                  <div className="text-xs text-muted-foreground italic border p-4 rounded bg-muted/20">
+                    No payload data captured for this packet.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -13,5 +13,6 @@ export type PacketType = {
   _ws_col_info: string[];
   eth_src: string[];
   eth_dst: string[];
+  payload: string[];
   is_flagged?: boolean;
 };

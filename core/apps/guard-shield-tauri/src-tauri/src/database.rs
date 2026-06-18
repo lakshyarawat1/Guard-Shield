@@ -14,6 +14,21 @@ pub struct AlertData {
     pub port: String,
     pub protocol: String,
     pub info: String,
+    pub payload: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CustomRule {
+    pub id: Option<i64>,
+    pub name: String,
+    pub description: String,
+    pub action: String,
+    pub src_ip: Option<String>,
+    pub dst_ip: Option<String>,
+    pub protocol: String,
+    pub src_port: Option<String>,
+    pub dst_port: Option<String>,
+    pub is_active: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -65,15 +80,38 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
         [],
     )?;
 
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS custom_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            action TEXT NOT NULL,
+            src_ip TEXT,
+            dst_ip TEXT,
+            protocol TEXT NOT NULL,
+            src_port TEXT,
+            dst_port TEXT,
+            is_active BOOLEAN NOT NULL DEFAULT 1
+        )",
+        [],
+    )?;
+
+    // Add payload columns if they don't exist (non-destructive migration)
+    let _ = conn.execute("ALTER TABLE packets ADD COLUMN payload TEXT", []);
+    let _ = conn.execute("ALTER TABLE alerts ADD COLUMN payload TEXT", []);
+
     Ok(DatabaseState { conn: Mutex::new(conn) })
 }
 
-pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64) -> Result<Option<AlertData>> {
+pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custom_rules: &[CustomRule]) -> Result<Option<AlertData>> {
+    let payload = p.payload.first().map(|s| s.as_str()).unwrap_or("");
+
     conn.execute(
         "INSERT INTO packets (
             frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, 
-            tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst, payload
+        ) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             p.frame_time.first().map(|s| s.as_str()).unwrap_or(""),
             p.frame_len.first().map(|s| s.as_str()).unwrap_or(""),
@@ -89,6 +127,7 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64) -> Re
             p._ws_col_info.first().map(|s| s.as_str()).unwrap_or(""),
             p.eth_src.first().map(|s| s.as_str()).unwrap_or(""),
             p.eth_dst.first().map(|s| s.as_str()).unwrap_or(""),
+            payload
         ],
     )?;
 
@@ -105,46 +144,81 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64) -> Re
     let mut protocol_str = "";
     let mut info = "";
 
-    if proto == "1" { 
-        impact_score = 2.0;
-        severity = "Low";
-        port = "N/A";
-        protocol_str = "ICMP";
-        info = "Possible ICMP Ping";
-    } else if proto == "6" { 
-        let dst_port = p.tcp_dstport.first().map(|s| s.as_str()).unwrap_or("");
-        if dst_port == "23" {
-            impact_score = 8.5;
-            severity = "High";
-            port = "23";
-            protocol_str = "TCP";
-            info = "Telnet connection attempt (insecure)";
-        } else if dst_port == "22" {
-            impact_score = 4.0;
-            severity = "Medium";
-            port = "22";
-            protocol_str = "TCP";
-            info = "SSH connection attempt";
-        } else if dst_port == "3389" {
-            impact_score = 6.5;
-            severity = "High";
-            port = "3389";
-            protocol_str = "TCP";
-            info = "RDP connection attempt";
-        } else if dst_port == "445" {
-            impact_score = 9.0;
+    let src_ip = p.ip_src.first().map(|s| s.as_str()).unwrap_or("");
+    let dst_ip = p.ip_dst.first().map(|s| s.as_str()).unwrap_or("");
+    
+    let default_empty = String::new();
+    let src_port_ref = p.tcp_srcport.first().unwrap_or_else(|| p.udp_srcport.first().unwrap_or(&default_empty));
+    let dst_port_ref = p.tcp_dstport.first().unwrap_or_else(|| p.udp_dstport.first().unwrap_or(&default_empty));
+    
+    let src_port = src_port_ref.as_str();
+    let dst_port = dst_port_ref.as_str();
+
+    let proto_name = if proto == "6" { "TCP" } else if proto == "17" { "UDP" } else if proto == "1" { "ICMP" } else { "Any" };
+
+    // 1. Evaluate Custom Rules first
+    for rule in custom_rules {
+        if !rule.is_active { continue; }
+        
+        let proto_match = rule.protocol == "Any" || rule.protocol == proto_name;
+        let src_ip_match = rule.src_ip.as_deref().unwrap_or("") == "" || rule.src_ip.as_deref().unwrap_or("") == src_ip;
+        let dst_ip_match = rule.dst_ip.as_deref().unwrap_or("") == "" || rule.dst_ip.as_deref().unwrap_or("") == dst_ip;
+        let src_port_match = rule.src_port.as_deref().unwrap_or("") == "" || rule.src_port.as_deref().unwrap_or("") == src_port;
+        let dst_port_match = rule.dst_port.as_deref().unwrap_or("") == "" || rule.dst_port.as_deref().unwrap_or("") == dst_port;
+
+        if proto_match && src_ip_match && dst_ip_match && src_port_match && dst_port_match {
+            impact_score = 10.0; // Custom rules are high priority
             severity = "Critical";
-            port = "445";
-            protocol_str = "TCP";
-            info = "SMB connection attempt";
+            port = dst_port;
+            protocol_str = proto_name;
+            info = rule.name.as_str();
+            break; // Stop evaluating after first custom rule match
+        }
+    }
+
+    // 2. Evaluate Hardcoded Rules only if no custom rule matched
+    if impact_score == 0.0 {
+        if proto == "1" { 
+            impact_score = 2.0;
+            severity = "Low";
+            port = "N/A";
+            protocol_str = "ICMP";
+            info = "Possible ICMP Ping";
+        } else if proto == "6" { 
+            let dst_port = p.tcp_dstport.first().map(|s| s.as_str()).unwrap_or("");
+            if dst_port == "23" {
+                impact_score = 8.5;
+                severity = "High";
+                port = "23";
+                protocol_str = "TCP";
+                info = "Telnet connection attempt (insecure)";
+            } else if dst_port == "22" {
+                impact_score = 4.0;
+                severity = "Medium";
+                port = "22";
+                protocol_str = "TCP";
+                info = "SSH connection attempt";
+            } else if dst_port == "3389" {
+                impact_score = 6.5;
+                severity = "High";
+                port = "3389";
+                protocol_str = "TCP";
+                info = "RDP connection attempt";
+            } else if dst_port == "445" {
+                impact_score = 9.0;
+                severity = "Critical";
+                port = "445";
+                protocol_str = "TCP";
+                info = "SMB connection attempt";
+            }
         }
     }
 
     if impact_score > 0.0 {
         let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         if let Ok(_) = conn.execute(
-            "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![ts, impact_score, severity, port, protocol_str, info],
+            "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![ts, impact_score, severity, port, protocol_str, info, payload],
         ) {
             let id = conn.last_insert_rowid();
             alert = Some(AlertData {
@@ -155,6 +229,7 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64) -> Re
                 port: port.to_string(),
                 protocol: protocol_str.to_string(),
                 info: info.to_string(),
+                payload: payload.to_string(),
             });
         }
     }
@@ -183,11 +258,12 @@ pub fn insert_mock_alert(conn: &Connection, severity: &str, impact: f64) -> Resu
         port: port.to_string(),
         protocol: protocol.to_string(),
         info: info.to_string(),
+        payload: String::new(),
     })
 }
 
 pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
-    let mut stmt = conn.prepare("SELECT frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst FROM packets ORDER BY id DESC LIMIT 100")?;
+    let mut stmt = conn.prepare("SELECT frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst, payload FROM packets ORDER BY id DESC LIMIT 100")?;
     let packet_iter = stmt.query_map([], |row| {
         Ok(PacketData {
             frame_time: vec![row.get(0)?],
@@ -204,6 +280,7 @@ pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
             _ws_col_info: vec![row.get(11)?],
             eth_src: vec![row.get(12)?],
             eth_dst: vec![row.get(13)?],
+            payload: vec![row.get::<usize, Option<String>>(14)?.unwrap_or_default()],
         })
     })?;
 
@@ -215,7 +292,7 @@ pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
 }
 
 pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
-    let mut stmt = conn.prepare("SELECT id, timestamp, impact_score, severity, port, protocol, info FROM alerts ORDER BY id DESC LIMIT 100")?;
+    let mut stmt = conn.prepare("SELECT id, timestamp, impact_score, severity, port, protocol, info, payload FROM alerts ORDER BY id DESC LIMIT 50")?;
     let alert_iter = stmt.query_map([], |row| {
         Ok(AlertData {
             id: row.get(0)?,
@@ -225,6 +302,7 @@ pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
             port: row.get(4)?,
             protocol: row.get(5)?,
             info: row.get(6)?,
+            payload: row.get::<usize, Option<String>>(7)?.unwrap_or_default(),
         })
     })?;
 
@@ -238,14 +316,95 @@ pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
 pub fn get_telemetry_stats(conn: &Connection) -> Result<TelemetryStats> {
     let total_alerts: i64 = conn.query_row("SELECT count(*) FROM alerts", [], |row| row.get(0)).unwrap_or(0);
     // Simple 24h check: we store timestamp as YYYY-MM-DDTHH:MM:SS. SQLite date function:
-    let last_24h_alerts: i64 = conn.query_row(
-        "SELECT count(*) FROM alerts WHERE datetime(timestamp) >= datetime('now', '-1 day')", 
-        [], 
-        |row| row.get(0)
-    ).unwrap_or(0);
+    let last_24h = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%dT%H:%M:%S").to_string();
+    let row_count = conn.query_row("SELECT COUNT(*) FROM alerts WHERE timestamp >= ?1", params![last_24h], |row| row.get(0))?;
 
     Ok(TelemetryStats {
         total_alerts,
-        last_24h_alerts,
+        last_24h_alerts: row_count,
     })
 }
+
+pub fn insert_custom_rule(conn: &Connection, rule: &CustomRule) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO custom_rules (name, description, action, src_ip, dst_ip, protocol, src_port, dst_port, is_active)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            rule.name,
+            rule.description,
+            rule.action,
+            rule.src_ip,
+            rule.dst_ip,
+            rule.protocol,
+            rule.src_port,
+            rule.dst_port,
+            rule.is_active
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_custom_rules(conn: &Connection) -> Result<Vec<CustomRule>> {
+    let mut stmt = conn.prepare("SELECT id, name, description, action, src_ip, dst_ip, protocol, src_port, dst_port, is_active FROM custom_rules")?;
+    let rule_iter = stmt.query_map([], |row| {
+        Ok(CustomRule {
+            id: Some(row.get(0)?),
+            name: row.get(1)?,
+            description: row.get(2)?,
+            action: row.get(3)?,
+            src_ip: row.get(4)?,
+            dst_ip: row.get(5)?,
+            protocol: row.get(6)?,
+            src_port: row.get(7)?,
+            dst_port: row.get(8)?,
+            is_active: row.get(9)?,
+        })
+    })?;
+
+    let mut rules = Vec::new();
+    for rule in rule_iter {
+        rules.push(rule?);
+    }
+    Ok(rules)
+}
+
+pub fn delete_custom_rule(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM custom_rules WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn toggle_custom_rule(conn: &Connection, id: i64, is_active: bool) -> Result<()> {
+    conn.execute("UPDATE custom_rules SET is_active = ?1 WHERE id = ?2", params![is_active, id])?;
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SystemHealthStats {
+    pub database_size_bytes: u64,
+    pub total_packets: i64,
+    pub total_alerts: i64,
+    pub is_capturing: bool,
+}
+
+pub fn get_system_health_stats(conn: &Connection, app_dir: std::path::PathBuf, is_capturing: bool) -> Result<SystemHealthStats> {
+    let db_path = app_dir.join("guard_shield.db");
+    let database_size_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
+    
+    let total_packets: i64 = conn.query_row("SELECT count(*) FROM packets", [], |row| row.get(0)).unwrap_or(0);
+    let total_alerts: i64 = conn.query_row("SELECT count(*) FROM alerts", [], |row| row.get(0)).unwrap_or(0);
+    
+    Ok(SystemHealthStats {
+        database_size_bytes,
+        total_packets,
+        total_alerts,
+        is_capturing,
+    })
+}
+
+pub fn clear_database(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM packets", [])?;
+    conn.execute("DELETE FROM alerts", [])?;
+    conn.execute("VACUUM", [])?;
+    Ok(())
+}
+

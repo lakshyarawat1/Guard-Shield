@@ -3,11 +3,12 @@ mod packet_capturer;
 
 use crossbeam_channel::{unbounded, Receiver};
 use packet_capturer::PacketData;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
 use tauri::{AppHandle, Emitter, State, Manager};
 
 struct AppState {
     capture_flag: Mutex<Option<Arc<AtomicBool>>>,
+    custom_rules: RwLock<Vec<database::CustomRule>>,
 }
 
 #[tauri::command]
@@ -34,6 +35,33 @@ fn get_telemetry_stats(state: State<'_, database::DatabaseState>) -> Result<data
 }
 
 #[tauri::command]
+fn get_system_health_stats(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<database::SystemHealthStats, String> {
+    let conn = db_state.conn.lock().unwrap();
+    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    
+    let is_capturing = {
+        let flag_lock = state.capture_flag.lock().unwrap();
+        if let Some(flag) = &*flag_lock {
+            flag.load(Ordering::Relaxed)
+        } else {
+            false
+        }
+    };
+    
+    database::get_system_health_stats(&conn, app_dir, is_capturing).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_database(db_state: State<'_, database::DatabaseState>) -> Result<(), String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::clear_database(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn stop_packet_capture(state: State<'_, AppState>) -> Result<(), String> {
     let mut flag_lock = state.capture_flag.lock().unwrap();
     if let Some(old_flag) = flag_lock.take() {
@@ -55,6 +83,51 @@ fn trigger_mock_alert(
                 let _ = app.emit("intrusion-alert", alert);
             }
             Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn add_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, rule: database::CustomRule) -> Result<i64, String> {
+    let conn = db_state.conn.lock().unwrap();
+    let id = database::insert_custom_rule(&conn, &rule).map_err(|e| e.to_string())?;
+    
+    if let Ok(rules) = database::get_custom_rules(&conn) {
+        if let Ok(mut cache) = state.custom_rules.write() {
+            *cache = rules;
+        }
+    }
+    Ok(id)
+}
+
+#[tauri::command]
+fn fetch_custom_rules(db_state: State<'_, database::DatabaseState>) -> Result<Vec<database::CustomRule>, String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::get_custom_rules(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64) -> Result<(), String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::delete_custom_rule(&conn, id).map_err(|e| e.to_string())?;
+    
+    if let Ok(rules) = database::get_custom_rules(&conn) {
+        if let Ok(mut cache) = state.custom_rules.write() {
+            *cache = rules;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn toggle_custom_rule_state(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64, is_active: bool) -> Result<(), String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::toggle_custom_rule(&conn, id, is_active).map_err(|e| e.to_string())?;
+    
+    if let Ok(rules) = database::get_custom_rules(&conn) {
+        if let Ok(mut cache) = state.custom_rules.write() {
+            *cache = rules;
         }
     }
     Ok(())
@@ -102,14 +175,17 @@ fn start_packet_capture(
             }
 
             if let Some(db_state) = app_clone.try_state::<database::DatabaseState>() {
-                if let Ok(conn) = db_state.conn.lock() {
-                    for p in &packets_to_process {
-                        match database::insert_packet(&conn, p, &mut counter) {
-                            Ok(Some(alert)) => {
-                                let _ = app_clone.emit("intrusion-alert", alert);
+                if let Some(app_state) = app_clone.try_state::<AppState>() {
+                    if let Ok(conn) = db_state.conn.lock() {
+                        let rules = app_state.custom_rules.read().unwrap();
+                        for p in &packets_to_process {
+                            match database::insert_packet(&conn, p, &mut counter, &rules) {
+                                Ok(Some(alert)) => {
+                                    let _ = app_clone.emit("intrusion-alert", alert);
+                                }
+                                Err(e) => eprintln!("DB insert error: {}", e),
+                                _ => {}
                             }
-                            Err(e) => eprintln!("DB insert error: {}", e),
-                            _ => {}
                         }
                     }
                 }
@@ -137,21 +213,31 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let db_state = database::init_db(app_dir).expect("Failed to init database");
+            let db_state = database::init_db(app_dir).expect("Failed to initialize database");
+    
+            let custom_rules = database::get_custom_rules(&db_state.conn.lock().unwrap()).unwrap_or_default();
+
             app.manage(db_state);
+            app.manage(AppState {
+                capture_flag: Mutex::new(None),
+                custom_rules: RwLock::new(custom_rules),
+            });
             Ok(())
-        })
-        .manage(AppState {
-            capture_flag: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_network_interfaces,
+            get_historical_packets,
+            get_alerts,
+            get_telemetry_stats,
             start_packet_capture,
             stop_packet_capture,
             trigger_mock_alert,
-            get_historical_packets,
-            get_alerts,
-            get_telemetry_stats
+            add_custom_rule,
+            fetch_custom_rules,
+            remove_custom_rule,
+            toggle_custom_rule_state,
+            get_system_health_stats,
+            clear_database
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
