@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, State, Manager};
 struct AppState {
     capture_flag: Mutex<Option<Arc<AtomicBool>>>,
     custom_rules: RwLock<Vec<database::CustomRule>>,
+    geoip_reader: Arc<RwLock<Option<maxminddb::Reader<Vec<u8>>>>>,
 }
 
 #[tauri::command]
@@ -178,7 +179,43 @@ fn start_packet_capture(
                 if let Some(app_state) = app_clone.try_state::<AppState>() {
                     if let Ok(conn) = db_state.conn.lock() {
                         let rules = app_state.custom_rules.read().unwrap();
-                        for p in &packets_to_process {
+                        let geoip_lock = app_state.geoip_reader.read().unwrap();
+                        
+                        for p in &mut packets_to_process {
+                            // GeoIP Enrichment
+                            if let Some(reader) = geoip_lock.as_ref() {
+                                if let Some(src_ip_str) = p.ip_src.first() {
+                                    if let Ok(ip) = src_ip_str.parse::<std::net::IpAddr>() {
+                                        let is_local = match ip {
+                                            std::net::IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_loopback() || ipv4.is_link_local() || ipv4.is_multicast() || ipv4.is_broadcast(),
+                                            std::net::IpAddr::V6(ipv6) => ipv6.is_loopback() || ipv6.is_multicast(),
+                                        };
+                                        if is_local {
+                                            p.src_country = vec!["LOCAL".to_string()];
+                                        } else if let Ok(country) = reader.lookup::<maxminddb::geoip2::Country>(ip) {
+                                            if let Some(c) = country.country.and_then(|c| c.iso_code) {
+                                                p.src_country = vec![c.to_string()];
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(dst_ip_str) = p.ip_dst.first() {
+                                    if let Ok(ip) = dst_ip_str.parse::<std::net::IpAddr>() {
+                                        let is_local = match ip {
+                                            std::net::IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_loopback() || ipv4.is_link_local() || ipv4.is_multicast() || ipv4.is_broadcast(),
+                                            std::net::IpAddr::V6(ipv6) => ipv6.is_loopback() || ipv6.is_multicast(),
+                                        };
+                                        if is_local {
+                                            p.dst_country = vec!["LOCAL".to_string()];
+                                        } else if let Ok(country) = reader.lookup::<maxminddb::geoip2::Country>(ip) {
+                                            if let Some(c) = country.country.and_then(|c| c.iso_code) {
+                                                p.dst_country = vec![c.to_string()];
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             match database::insert_packet(&conn, p, &mut counter, &rules) {
                                 Ok(Some(alert)) => {
                                     let _ = app_clone.emit("intrusion-alert", alert);
@@ -213,14 +250,41 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let db_state = database::init_db(app_dir).expect("Failed to initialize database");
+            let db_state = database::init_db(app_dir.clone()).expect("Failed to initialize database");
     
             let custom_rules = database::get_custom_rules(&db_state.conn.lock().unwrap()).unwrap_or_default();
+
+            let geoip_reader = Arc::new(RwLock::new(None));
+            let geoip_reader_clone = geoip_reader.clone();
+            let app_dir_clone = app_dir.clone();
+
+            tauri::async_runtime::spawn(async move {
+                let db_path = app_dir_clone.join("GeoLite2-Country.mmdb");
+                if !db_path.exists() {
+                    println!("Downloading GeoLite2-Country.mmdb...");
+                    if let Ok(response) = reqwest::get("https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb").await {
+                        if let Ok(bytes) = response.bytes().await {
+                            let _ = std::fs::write(&db_path, bytes);
+                            println!("Downloaded GeoLite2-Country.mmdb");
+                        }
+                    }
+                }
+
+                if let Ok(bytes) = std::fs::read(&db_path) {
+                    if let Ok(reader) = maxminddb::Reader::from_source(bytes) {
+                        if let Ok(mut lock) = geoip_reader_clone.write() {
+                            *lock = Some(reader);
+                            println!("GeoIP Reader loaded successfully.");
+                        }
+                    }
+                }
+            });
 
             app.manage(db_state);
             app.manage(AppState {
                 capture_flag: Mutex::new(None),
                 custom_rules: RwLock::new(custom_rules),
+                geoip_reader,
             });
             Ok(())
         })

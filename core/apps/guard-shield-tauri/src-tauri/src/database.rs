@@ -15,6 +15,8 @@ pub struct AlertData {
     pub protocol: String,
     pub info: String,
     pub payload: String,
+    pub src_country: String,
+    pub dst_country: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -99,19 +101,25 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
     // Add payload columns if they don't exist (non-destructive migration)
     let _ = conn.execute("ALTER TABLE packets ADD COLUMN payload TEXT", []);
     let _ = conn.execute("ALTER TABLE alerts ADD COLUMN payload TEXT", []);
+    let _ = conn.execute("ALTER TABLE packets ADD COLUMN src_country TEXT", []);
+    let _ = conn.execute("ALTER TABLE packets ADD COLUMN dst_country TEXT", []);
+    let _ = conn.execute("ALTER TABLE alerts ADD COLUMN src_country TEXT", []);
+    let _ = conn.execute("ALTER TABLE alerts ADD COLUMN dst_country TEXT", []);
 
     Ok(DatabaseState { conn: Mutex::new(conn) })
 }
 
 pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custom_rules: &[CustomRule]) -> Result<Option<AlertData>> {
     let payload = p.payload.first().map(|s| s.as_str()).unwrap_or("");
+    let src_country = p.src_country.first().map(|s| s.as_str()).unwrap_or("");
+    let dst_country = p.dst_country.first().map(|s| s.as_str()).unwrap_or("");
 
     conn.execute(
         "INSERT INTO packets (
             frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, 
-            tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst, payload
+            tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst, payload, src_country, dst_country
         ) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             p.frame_time.first().map(|s| s.as_str()).unwrap_or(""),
             p.frame_len.first().map(|s| s.as_str()).unwrap_or(""),
@@ -127,7 +135,9 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custo
             p._ws_col_info.first().map(|s| s.as_str()).unwrap_or(""),
             p.eth_src.first().map(|s| s.as_str()).unwrap_or(""),
             p.eth_dst.first().map(|s| s.as_str()).unwrap_or(""),
-            payload
+            payload,
+            src_country,
+            dst_country
         ],
     )?;
 
@@ -216,9 +226,13 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custo
 
     if impact_score > 0.0 {
         let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        
+        let src_country = p.src_country.first().map(|s| s.as_str()).unwrap_or("");
+        let dst_country = p.dst_country.first().map(|s| s.as_str()).unwrap_or("");
+
         if let Ok(_) = conn.execute(
-            "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![ts, impact_score, severity, port, protocol_str, info, payload],
+            "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info, payload, src_country, dst_country) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![ts, impact_score, severity, port, protocol_str, info, payload, src_country, dst_country],
         ) {
             let id = conn.last_insert_rowid();
             alert = Some(AlertData {
@@ -230,6 +244,8 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custo
                 protocol: protocol_str.to_string(),
                 info: info.to_string(),
                 payload: payload.to_string(),
+                src_country: src_country.to_string(),
+                dst_country: dst_country.to_string(),
             });
         }
     }
@@ -259,11 +275,13 @@ pub fn insert_mock_alert(conn: &Connection, severity: &str, impact: f64) -> Resu
         protocol: protocol.to_string(),
         info: info.to_string(),
         payload: String::new(),
+        src_country: String::new(),
+        dst_country: String::new(),
     })
 }
 
 pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
-    let mut stmt = conn.prepare("SELECT frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst, payload FROM packets ORDER BY id DESC LIMIT 100")?;
+    let mut stmt = conn.prepare("SELECT frame_time, frame_len, ip_src, ip_dst, ip_proto, ip_ttl, tcp_srcport, tcp_dstport, tcp_flags, udp_srcport, udp_dstport, ws_col_info, eth_src, eth_dst, payload, src_country, dst_country FROM packets ORDER BY id DESC LIMIT 100")?;
     let packet_iter = stmt.query_map([], |row| {
         Ok(PacketData {
             frame_time: vec![row.get(0)?],
@@ -281,6 +299,8 @@ pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
             eth_src: vec![row.get(12)?],
             eth_dst: vec![row.get(13)?],
             payload: vec![row.get::<usize, Option<String>>(14)?.unwrap_or_default()],
+            src_country: vec![row.get::<usize, Option<String>>(15)?.unwrap_or_default()],
+            dst_country: vec![row.get::<usize, Option<String>>(16)?.unwrap_or_default()],
         })
     })?;
 
@@ -292,7 +312,7 @@ pub fn get_packets(conn: &Connection) -> Result<Vec<PacketData>> {
 }
 
 pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
-    let mut stmt = conn.prepare("SELECT id, timestamp, impact_score, severity, port, protocol, info, payload FROM alerts ORDER BY id DESC LIMIT 50")?;
+    let mut stmt = conn.prepare("SELECT id, timestamp, impact_score, severity, port, protocol, info, payload, src_country, dst_country FROM alerts ORDER BY id DESC LIMIT 50")?;
     let alert_iter = stmt.query_map([], |row| {
         Ok(AlertData {
             id: row.get(0)?,
@@ -303,6 +323,8 @@ pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
             protocol: row.get(5)?,
             info: row.get(6)?,
             payload: row.get::<usize, Option<String>>(7)?.unwrap_or_default(),
+            src_country: row.get::<usize, Option<String>>(8)?.unwrap_or_default(),
+            dst_country: row.get::<usize, Option<String>>(9)?.unwrap_or_default(),
         })
     })?;
 

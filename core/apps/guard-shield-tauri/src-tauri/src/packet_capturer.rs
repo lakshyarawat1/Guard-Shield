@@ -26,6 +26,8 @@ pub struct PacketData {
     pub eth_src: Vec<String>,
     pub eth_dst: Vec<String>,
     pub payload: Vec<String>,
+    pub src_country: Vec<String>,
+    pub dst_country: Vec<String>,
 }
 
 pub fn get_interfaces() -> Vec<String> {
@@ -164,6 +166,8 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                             eth_src: vec!["N/A (Raw Socket)".to_string()],
                             eth_dst: vec!["N/A (Raw Socket)".to_string()],
                             payload: vec![hex::encode(&packet)],
+                            src_country: vec![],
+                            dst_country: vec![],
                         };
 
                         if packet.len() >= ihl as usize {
