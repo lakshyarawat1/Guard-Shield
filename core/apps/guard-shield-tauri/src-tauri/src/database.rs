@@ -106,6 +106,10 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
     let _ = conn.execute("ALTER TABLE alerts ADD COLUMN src_country TEXT", []);
     let _ = conn.execute("ALTER TABLE alerts ADD COLUMN dst_country TEXT", []);
 
+    // ⚡ Bolt Optimization: Add index to speed up `get_telemetry_stats` range query on `timestamp`.
+    // Turns O(N) full table scan into an O(log N) index lookup.
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp)", []);
+
     Ok(DatabaseState { conn: Mutex::new(conn) })
 }
 
