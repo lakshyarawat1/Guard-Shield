@@ -1,15 +1,20 @@
 mod database;
 mod packet_capturer;
+mod ips_engine;
 
 use crossbeam_channel::{unbounded, Receiver};
 use packet_capturer::PacketData;
 use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
 use tauri::{AppHandle, Emitter, State, Manager};
+use ips_engine::IpsEngine;
 
 struct AppState {
     capture_flag: Mutex<Option<Arc<AtomicBool>>>,
     custom_rules: RwLock<Vec<database::CustomRule>>,
     geoip_reader: Arc<RwLock<Option<maxminddb::Reader<Vec<u8>>>>>,
+    ips_engine: Arc<Mutex<IpsEngine>>,
+    blocked_ips: Arc<RwLock<Vec<String>>>,
+    auto_block_enabled: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -72,16 +77,86 @@ fn stop_packet_capture(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn block_ip(ip: String, state: State<'_, AppState>) -> Result<(), String> {
+    let mut ips = state.blocked_ips.write().unwrap();
+    if !ips.contains(&ip) {
+        ips.push(ip);
+        let mut engine = state.ips_engine.lock().unwrap();
+        engine.start(ips.clone()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn unblock_ip(ip: String, state: State<'_, AppState>) -> Result<(), String> {
+    let mut ips = state.blocked_ips.write().unwrap();
+    if let Some(pos) = ips.iter().position(|x| x == &ip) {
+        ips.remove(pos);
+        let mut engine = state.ips_engine.lock().unwrap();
+        engine.start(ips.clone()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_blocked_ips(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    Ok(state.blocked_ips.read().unwrap().clone())
+}
+
+#[tauri::command]
+fn get_dropped_packets(state: State<'_, AppState>) -> Result<usize, String> {
+    let engine = state.ips_engine.lock().unwrap();
+    Ok(engine.get_dropped_count())
+}
+
+#[tauri::command]
+fn test_connection(ip: String) -> Result<String, String> {
+    use std::net::{TcpStream, SocketAddr};
+    use std::str::FromStr;
+    
+    let addr = format!("{}:80", ip);
+    let socket_addr = match SocketAddr::from_str(&addr) {
+        Ok(sa) => sa,
+        Err(e) => return Err(format!("Invalid IP address format: {}", e)),
+    };
+    let timeout = std::time::Duration::from_secs(3);
+    
+    match TcpStream::connect_timeout(&socket_addr, timeout) {
+        Ok(_) => Ok("Connected successfully! IPS did NOT block the traffic.".to_string()),
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::TimedOut {
+                Ok("Connection timed out! The IPS successfully dropped the packets.".to_string())
+            } else {
+                Ok(format!("Connection failed ({}). If 'Connection refused', the IPS did NOT block it.", e))
+            }
+        }
+    }
+}
+
+#[tauri::command]
 fn trigger_mock_alert(
     app: AppHandle,
+    state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
     severity: String,
     impact: f64,
+    src_ip: String,
 ) -> Result<(), String> {
     if let Ok(conn) = db_state.conn.lock() {
-        match database::insert_mock_alert(&conn, &severity, impact) {
+        match database::insert_mock_alert(&conn, &severity, impact, &src_ip) {
             Ok(alert) => {
                 let _ = app.emit("intrusion-alert", alert);
+                
+                // Active IPS Auto-Block Logic
+                if (severity == "Critical" || severity == "High") && state.auto_block_enabled.load(Ordering::Relaxed) {
+                    let mut ips = state.blocked_ips.write().unwrap();
+                    if !ips.contains(&src_ip) {
+                        ips.push(src_ip.clone());
+                        if let Ok(mut engine) = state.ips_engine.lock() {
+                            let _ = engine.start(ips.clone());
+                        }
+                    }
+                }
             }
             Err(e) => return Err(e.to_string()),
         }
@@ -131,6 +206,12 @@ fn toggle_custom_rule_state(state: State<'_, AppState>, db_state: State<'_, data
             *cache = rules;
         }
     }
+    Ok(())
+}
+
+#[tauri::command]
+fn toggle_auto_block(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    state.auto_block_enabled.store(enabled, Ordering::Relaxed);
     Ok(())
 }
 
@@ -216,12 +297,21 @@ fn start_packet_capture(
                                 }
                             }
 
-                            match database::insert_packet(&conn, p, &mut counter, &rules) {
-                                Ok(Some(alert)) => {
-                                    let _ = app_clone.emit("intrusion-alert", alert);
+                            if let Ok(Some(alert)) = database::insert_packet(&conn, p, &mut counter, &rules) {
+                                let _ = app_clone.emit("intrusion-alert", alert.clone());
+                                
+                                // Auto-Block logic for live traffic
+                                if (alert.severity == "Critical" || alert.severity == "High") && app_state.auto_block_enabled.load(Ordering::Relaxed) {
+                                    if !alert.src_ip.is_empty() {
+                                        let mut ips = app_state.blocked_ips.write().unwrap();
+                                        if !ips.contains(&alert.src_ip) {
+                                            ips.push(alert.src_ip.clone());
+                                            if let Ok(mut engine) = app_state.ips_engine.lock() {
+                                                let _ = engine.start(ips.clone());
+                                            }
+                                        }
+                                    }
                                 }
-                                Err(e) => eprintln!("DB insert error: {}", e),
-                                _ => {}
                             }
                         }
                     }
@@ -230,11 +320,8 @@ fn start_packet_capture(
 
             batch.extend(packets_to_process);
 
-            if last_emit.elapsed().as_millis() > 500 || batch.len() >= 500 {
-                if let Err(e) = app_clone.emit("packets-batch", &batch) {
-                    eprintln!("Failed to emit packets batch: {}", e);
-                    break;
-                }
+            if batch.len() >= 50 || last_emit.elapsed().as_millis() >= 100 {
+                let _ = app_clone.emit("packets-captured", batch.clone());
                 batch.clear();
                 last_emit = std::time::Instant::now();
             }
@@ -285,23 +372,32 @@ pub fn run() {
                 capture_flag: Mutex::new(None),
                 custom_rules: RwLock::new(custom_rules),
                 geoip_reader,
+                ips_engine: Arc::new(Mutex::new(IpsEngine::new())),
+                blocked_ips: Arc::new(RwLock::new(Vec::new())),
+                auto_block_enabled: Arc::new(AtomicBool::new(false)),
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_network_interfaces,
+            start_packet_capture,
+            stop_packet_capture,
             get_historical_packets,
             get_alerts,
             get_telemetry_stats,
-            start_packet_capture,
-            stop_packet_capture,
-            trigger_mock_alert,
             add_custom_rule,
             fetch_custom_rules,
             remove_custom_rule,
             toggle_custom_rule_state,
             get_system_health_stats,
-            clear_database
+            clear_database,
+            block_ip,
+            unblock_ip,
+            get_blocked_ips,
+            get_dropped_packets,
+            test_connection,
+            trigger_mock_alert,
+            toggle_auto_block,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
