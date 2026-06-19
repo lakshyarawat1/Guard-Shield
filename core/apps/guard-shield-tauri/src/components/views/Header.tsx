@@ -1,5 +1,5 @@
 
-import { Activity, Bell, ChevronDown, Monitor, Shield, ShieldAlert } from "lucide-react";
+import { Activity, Bell, ChevronDown, Monitor, Shield, ShieldAlert, ShieldBan } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import {
   DropdownMenu,
@@ -91,6 +91,22 @@ export function Header() {
   });
   
   const [customRules, setCustomRules] = useState<{id: number, name: string, is_active: boolean}[]>([]);
+  const [droppedPackets, setDroppedPackets] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchDroppedPackets = async () => {
+      try {
+        const count: number = await invoke("get_dropped_packets");
+        setDroppedPackets(count);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    
+    // Fetch every second to keep the counter live
+    const interval = setInterval(fetchDroppedPackets, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Fetch rules periodically or on mount
@@ -306,6 +322,11 @@ export function Header() {
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldAlert className="size-3" />
               <span>{threatCount} threats</span>
+            </div>
+            <Separator orientation="vertical" className="h-4" />
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ShieldBan className="size-3 text-destructive" />
+              <span className="font-medium text-destructive">{droppedPackets} dropped</span>
             </div>
           </div>
           <nav className="flex gap-2 items-center">

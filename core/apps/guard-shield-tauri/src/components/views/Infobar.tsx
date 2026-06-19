@@ -9,8 +9,12 @@ import {
   MenubarSubContent,
   MenubarSubTrigger,
   MenubarTrigger,
+  MenubarRadioGroup,
+  MenubarRadioItem,
 } from "../../components/ui/menubar";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 
 function openNetworkingSettings() {
   new WebviewWindow('networking-settings', {
@@ -22,6 +26,8 @@ function openNetworkingSettings() {
 }
 
 const Infobar = () => {
+  const [idsMode, setIdsMode] = useState("detection");
+
   return (
     <div className="w-full border-b py-2 text-sm">
       <Menubar className="border-none">
@@ -119,10 +125,19 @@ const Infobar = () => {
             <MenubarSub>
               <MenubarSubTrigger>IDS Mode</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>Detection Only</MenubarItem>
-                <MenubarItem>Prevention (Active Block)</MenubarItem>
-                <MenubarItem>Hybrid</MenubarItem>
-                <MenubarItem>Learning Mode</MenubarItem>
+                <MenubarRadioGroup value={idsMode} onValueChange={(val) => {
+                  setIdsMode(val);
+                  if (val === "detection") {
+                    invoke("toggle_auto_block", { enabled: false }).catch(console.error);
+                  } else if (val === "prevention") {
+                    invoke("toggle_auto_block", { enabled: true }).catch(console.error);
+                  }
+                }}>
+                  <MenubarRadioItem value="detection">Detection Only</MenubarRadioItem>
+                  <MenubarRadioItem value="prevention">Prevention (Active Block)</MenubarRadioItem>
+                  <MenubarRadioItem value="hybrid" disabled>Hybrid</MenubarRadioItem>
+                  <MenubarRadioItem value="learning" disabled>Learning Mode</MenubarRadioItem>
+                </MenubarRadioGroup>
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSeparator />

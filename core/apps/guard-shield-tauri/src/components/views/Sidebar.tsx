@@ -103,10 +103,10 @@ const Sidebar = () => {
               <Globe className="size-4" />
               <span>Threat Feed</span>
             </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
-              <Ban className="size-4" />
-              <span>Blocked IPs</span>
-            </div>
+              <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors px-2 py-1.5 rounded-sm" onClick={() => navigate('/blocked-ips')}>
+                <Ban className="size-4 shrink-0" />
+                <span className="truncate">Blocked IPs</span>
+              </div>
             <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
               <ShieldCheck className="size-4" />
               <span>Whitelisted IPs</span>

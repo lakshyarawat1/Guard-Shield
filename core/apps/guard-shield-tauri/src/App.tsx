@@ -8,6 +8,7 @@ import ContactUs from "./components/views/ContactUs";
 import GeneralSettings from "./components/views/GeneralSettings";
 import SuspiciousTraffic from "./components/views/SuspiciousTraffic";
 import SystemHealth from "./components/views/SystemHealth";
+import BlockedIPs from "./components/views/BlockedIPs";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
       <Route path="/create-rule" element={<CreateRule />} />
       <Route path="/contact" element={<ContactUs />} />
       <Route path="/system-health" element={<SystemHealth />} />
+      <Route path="/blocked-ips" element={<BlockedIPs />} />
     </Routes>
   );
 }

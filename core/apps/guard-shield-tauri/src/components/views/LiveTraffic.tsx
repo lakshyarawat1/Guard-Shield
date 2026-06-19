@@ -2,7 +2,8 @@ import { Badge } from "../ui/badge";
 import { TableCell, TableHead } from "../ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Input } from "../ui/input";
-import { ArrowUpDown, ArrowDown, ArrowUp, Network } from "lucide-react";
+import { ArrowUpDown, ArrowDown, ArrowUp, Network, ShieldBan } from "lucide-react";
+import { Button } from "../ui/button";
 import { Header } from "./Header";
 import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
@@ -30,6 +31,14 @@ export default function LiveTraffic() {
   const [packets, setPackets] = useState<PacketType[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const handleBlockIp = async (ip: string) => {
+    try {
+      await invoke("block_ip", { ip });
+      alert(`Successfully blocked IP: ${ip}\nActive IPS rules updated. Traffic from this IP will now be dropped.`);
+    } catch (error) {
+      alert(`Failed to block IP: ${ip}\n${String(error)}`);
+    }
+  };
   const [filterProto, setFilterProto] = useState<string>("All");
   const [filterSrcIp, setFilterSrcIp] = useState<string>("");
   const [filterDstIp, setFilterDstIp] = useState<string>("");
@@ -363,11 +372,25 @@ export default function LiveTraffic() {
             <div className="grid gap-4 py-4 text-sm">
               <div className="grid grid-cols-4 items-center gap-4">
                 <span className="font-semibold text-muted-foreground">Source</span>
-                <span className="col-span-3">{selectedPacket.ip_src?.[0]}:{selectedPacket.tcp_srcport?.[0] || selectedPacket.udp_srcport?.[0] || "*"}</span>
+                <span className="col-span-3 flex items-center justify-between">
+                  <span>{selectedPacket.ip_src?.[0]}:{selectedPacket.tcp_srcport?.[0] || selectedPacket.udp_srcport?.[0] || "*"}</span>
+                  {selectedPacket.ip_src?.[0] && selectedPacket.src_country?.[0] !== "LOCAL" && (
+                    <Button variant="outline" size="sm" onClick={() => handleBlockIp(selectedPacket.ip_src![0])} className="h-7 text-xs text-destructive hover:text-destructive">
+                      <ShieldBan className="w-3 h-3 mr-1" /> Block IP
+                    </Button>
+                  )}
+                </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <span className="font-semibold text-muted-foreground">Destination</span>
-                <span className="col-span-3">{selectedPacket.ip_dst?.[0]}:{selectedPacket.tcp_dstport?.[0] || selectedPacket.udp_dstport?.[0] || "*"}</span>
+                <span className="col-span-3 flex items-center justify-between">
+                  <span>{selectedPacket.ip_dst?.[0]}:{selectedPacket.tcp_dstport?.[0] || selectedPacket.udp_dstport?.[0] || "*"}</span>
+                  {selectedPacket.ip_dst?.[0] && selectedPacket.dst_country?.[0] !== "LOCAL" && (
+                    <Button variant="outline" size="sm" onClick={() => handleBlockIp(selectedPacket.ip_dst![0])} className="h-7 text-xs text-destructive hover:text-destructive">
+                      <ShieldBan className="w-3 h-3 mr-1" /> Block IP
+                    </Button>
+                  )}
+                </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <span className="font-semibold text-muted-foreground">GeoIP Origin</span>

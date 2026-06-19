@@ -36,6 +36,7 @@ interface AlertData {
   payload: string;
   src_country: string;
   dst_country: string;
+  src_ip: string;
 }
 
 interface TelemetryStats {
@@ -55,8 +56,18 @@ const Monitoring = () => {
   const [showDevModal, setShowDevModal] = useState<boolean>(false);
   const [devSeverity, setDevSeverity] = useState<string>("Critical");
   const [devImpact, setDevImpact] = useState<number>(9.5);
+  const [devSrcIp, setDevSrcIp] = useState<string>("8.8.8.8");
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+
+  const handleBlockIp = async (ip: string) => {
+    try {
+      await invoke("block_ip", { ip });
+      alert(`Successfully blocked IP: ${ip}\nActive IPS rules updated. Traffic from this IP will now be dropped.`);
+    } catch (error) {
+      alert(`Failed to block IP: ${ip}\n${String(error)}`);
+    }
+  };
 
   const filteredAlerts = (severityFilter === "All" 
     ? alerts 
@@ -254,6 +265,7 @@ const Monitoring = () => {
                 <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Timestamp")}>
                   <div className="flex items-center">Timestamp {renderSortIcon("Timestamp")}</div>
                 </TableHead>
+                <TableHead>Source IP</TableHead>
                 <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Port")}>
                   <div className="flex items-center">Port {renderSortIcon("Port")}</div>
                 </TableHead>
@@ -290,6 +302,7 @@ const Monitoring = () => {
                     <TableCell className="text-xs text-muted-foreground">
                       {item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "—"}
                     </TableCell>
+                    <TableCell className="font-mono text-xs">{item.src_ip || "—"}</TableCell>
                     <TableCell>{item.port}</TableCell>
                     <TableCell className="text-right">{item.protocol}</TableCell>
                     <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
@@ -300,7 +313,7 @@ const Monitoring = () => {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button className="p-1 rounded hover:bg-accent transition-colors cursor-pointer">
+                              <button className="p-1 rounded hover:bg-accent transition-colors cursor-pointer" onClick={(e) => { e.stopPropagation(); if(item.src_ip) handleBlockIp(item.src_ip); }}>
                                 <ShieldBan className="size-3.5 text-destructive" />
                               </button>
                             </TooltipTrigger>
@@ -351,6 +364,7 @@ const Monitoring = () => {
           </DialogHeader>
           {selectedAlert && (() => {
             const isStarred = starredAlertIds.has(selectedAlert.id);
+            const sourceIp = selectedAlert.info.split(" ").pop() || "Unknown";
             return (
               <div className="grid gap-4 py-4 text-sm">
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -360,6 +374,15 @@ const Monitoring = () => {
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="font-semibold text-muted-foreground">Timestamp</span>
                   <span className="col-span-3">{selectedAlert.timestamp}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="font-semibold text-muted-foreground">Source</span>
+                  <span className="col-span-3 flex items-center justify-between">
+                    <span>{sourceIp}</span>
+                    <Button variant="destructive" size="sm" onClick={() => handleBlockIp(sourceIp)}>
+                      Block IP
+                    </Button>
+                  </span>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="font-semibold text-muted-foreground">Protocol</span>
@@ -499,11 +522,21 @@ const Monitoring = () => {
                 onChange={(e) => setDevImpact(parseFloat(e.target.value) || 0)}
               />
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="srcIp">Source IP</Label>
+              <Input
+                id="srcIp"
+                type="text"
+                placeholder="e.g. 8.8.8.8"
+                value={devSrcIp}
+                onChange={(e) => setDevSrcIp(e.target.value)}
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowDevModal(false)}>Cancel</Button>
             <Button onClick={() => {
-              invoke("trigger_mock_alert", { severity: devSeverity, impact: devImpact }).catch(console.error);
+              invoke("trigger_mock_alert", { severity: devSeverity, impact: devImpact, srcIp: devSrcIp }).catch(console.error);
               setShowDevModal(false);
             }}>Send Alert</Button>
           </div>

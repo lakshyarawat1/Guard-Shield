@@ -96,14 +96,33 @@ export default function AnalyticsDashboard() {
   }, []);
 
   const timelineData = useMemo(() => {
-    const sorted = [...alerts].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return sorted.slice(-30).map(a => {
+    // Bucket alerts by HH:MM
+    type SeverityCounts = { Critical: number, High: number, Medium: number, Low: number };
+    const buckets: Record<string, SeverityCounts> = {};
+    
+    // Process all alerts
+    alerts.forEach(a => {
       const timeParts = a.timestamp.split("T");
-      return {
-        time: timeParts.length > 1 ? timeParts[1].substring(0, 8) : a.timestamp,
-        impact: a.impact_score
-      };
+      if (timeParts.length < 2) return;
+      const hm = timeParts[1].substring(0, 5); // Extract HH:MM
+      
+      if (!buckets[hm]) {
+        buckets[hm] = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+      }
+      
+      if (a.severity === "Critical" || a.severity === "High" || a.severity === "Medium" || a.severity === "Low") {
+        buckets[hm][a.severity as keyof SeverityCounts]++;
+      }
     });
+
+    // Sort chronologically and take the last 30 buckets
+    return Object.entries(buckets)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-30)
+      .map(([time, counts]) => ({
+        time,
+        ...counts
+      }));
   }, [alerts]);
 
   const severityData = useMemo(() => {
@@ -174,27 +193,25 @@ export default function AnalyticsDashboard() {
             <div className="col-span-2 p-5 rounded-xl border bg-card shadow-sm flex flex-col">
               <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
                 <Activity className="size-5 text-primary" />
-                Alert Impact Timeline
+                Alert Volume by Severity
               </h3>
               <div className="flex-1 min-h-[250px]">
                 {timelineData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorImpact" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--destructive)" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="var(--destructive)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
+                    <BarChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                      <XAxis dataKey="time" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--muted-foreground)" fontSize={12} domain={[0, 10]} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="time" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} minTickGap={15} />
+                      <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
                       <RechartsTooltip
                         contentStyle={{ backgroundColor: "var(--popover)", borderColor: "var(--border)", borderRadius: "8px", color: "var(--popover-foreground)" }}
-                        itemStyle={{ color: "var(--destructive)" }}
+                        cursor={{ fill: 'var(--accent)' }}
                       />
-                      <Area type="monotone" dataKey="impact" stroke="var(--destructive)" strokeWidth={3} fillOpacity={1} fill="url(#colorImpact)" />
-                    </AreaChart>
+                      <Legend verticalAlign="top" height={36} iconType="circle" />
+                      <Bar dataKey="Critical" stackId="a" fill="var(--destructive)" />
+                      <Bar dataKey="High" stackId="a" fill="var(--chart-5)" />
+                      <Bar dataKey="Medium" stackId="a" fill="var(--chart-4)" />
+                      <Bar dataKey="Low" stackId="a" fill="var(--chart-2)" />
+                    </BarChart>
                   </ResponsiveContainer>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted-foreground border-2 border-dashed rounded-lg">
