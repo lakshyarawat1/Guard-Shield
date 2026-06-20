@@ -77,30 +77,49 @@ fn stop_packet_capture(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn block_ip(ip: String, state: State<'_, AppState>) -> Result<(), String> {
+fn block_ip(
+    ip: String, 
+    reason: Option<String>,
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<(), String> {
+    let reason_str = reason.unwrap_or_else(|| "Manual Block".to_string());
+    if let Ok(conn) = db_state.conn.lock() {
+        let _ = database::insert_blocked_ip(&conn, &ip, &reason_str);
+    }
+    
     let mut ips = state.blocked_ips.write().unwrap();
     if !ips.contains(&ip) {
         ips.push(ip);
         let mut engine = state.ips_engine.lock().unwrap();
-        engine.start(ips.clone()).map_err(|e| e.to_string())?;
+        engine.start(ips.clone(), state.custom_rules.read().unwrap().clone()).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn unblock_ip(ip: String, state: State<'_, AppState>) -> Result<(), String> {
+fn unblock_ip(
+    ip: String, 
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<(), String> {
+    if let Ok(conn) = db_state.conn.lock() {
+        let _ = database::remove_blocked_ip(&conn, &ip);
+    }
+    
     let mut ips = state.blocked_ips.write().unwrap();
     if let Some(pos) = ips.iter().position(|x| x == &ip) {
         ips.remove(pos);
         let mut engine = state.ips_engine.lock().unwrap();
-        engine.start(ips.clone()).map_err(|e| e.to_string())?;
+        engine.start(ips.clone(), state.custom_rules.read().unwrap().clone()).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn get_blocked_ips(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    Ok(state.blocked_ips.read().unwrap().clone())
+fn get_blocked_ips(db_state: State<'_, database::DatabaseState>) -> Result<Vec<database::BlockedIpData>, String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::get_blocked_ips(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -149,11 +168,12 @@ fn trigger_mock_alert(
                 
                 // Active IPS Auto-Block Logic
                 if (severity == "Critical" || severity == "High") && state.auto_block_enabled.load(Ordering::Relaxed) {
+                    let _ = database::insert_blocked_ip(&conn, &src_ip, &format!("Auto-Blocked: Mock Alert ({})", severity));
                     let mut ips = state.blocked_ips.write().unwrap();
                     if !ips.contains(&src_ip) {
                         ips.push(src_ip.clone());
                         if let Ok(mut engine) = state.ips_engine.lock() {
-                            let _ = engine.start(ips.clone());
+                            let _ = engine.start(ips.clone(), state.custom_rules.read().unwrap().clone());
                         }
                     }
                 }
@@ -171,7 +191,11 @@ fn add_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::Dat
     
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
-            *cache = rules;
+            *cache = rules.clone();
+            if let Ok(mut engine) = state.ips_engine.lock() {
+                let ips = state.blocked_ips.read().unwrap().clone();
+                let _ = engine.start(ips, rules);
+            }
         }
     }
     Ok(id)
@@ -190,7 +214,11 @@ fn remove_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::
     
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
-            *cache = rules;
+            *cache = rules.clone();
+            if let Ok(mut engine) = state.ips_engine.lock() {
+                let ips = state.blocked_ips.read().unwrap().clone();
+                let _ = engine.start(ips, rules);
+            }
         }
     }
     Ok(())
@@ -203,7 +231,11 @@ fn toggle_custom_rule_state(state: State<'_, AppState>, db_state: State<'_, data
     
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
-            *cache = rules;
+            *cache = rules.clone();
+            if let Ok(mut engine) = state.ips_engine.lock() {
+                let ips = state.blocked_ips.read().unwrap().clone();
+                let _ = engine.start(ips, rules);
+            }
         }
     }
     Ok(())
@@ -303,11 +335,12 @@ fn start_packet_capture(
                                 // Auto-Block logic for live traffic
                                 if (alert.severity == "Critical" || alert.severity == "High") && app_state.auto_block_enabled.load(Ordering::Relaxed) {
                                     if !alert.src_ip.is_empty() {
+                                        let _ = database::insert_blocked_ip(&conn, &alert.src_ip, &format!("Auto-Blocked: Alert ID #{}", alert.id));
                                         let mut ips = app_state.blocked_ips.write().unwrap();
                                         if !ips.contains(&alert.src_ip) {
                                             ips.push(alert.src_ip.clone());
                                             if let Ok(mut engine) = app_state.ips_engine.lock() {
-                                                let _ = engine.start(ips.clone());
+                                                let _ = engine.start(ips.clone(), app_state.custom_rules.read().unwrap().clone());
                                             }
                                         }
                                     }
@@ -321,7 +354,7 @@ fn start_packet_capture(
             batch.extend(packets_to_process);
 
             if batch.len() >= 50 || last_emit.elapsed().as_millis() >= 100 {
-                let _ = app_clone.emit("packets-captured", batch.clone());
+                let _ = app_clone.emit("packets-batch", batch.clone());
                 batch.clear();
                 last_emit = std::time::Instant::now();
             }
@@ -340,6 +373,9 @@ pub fn run() {
             let db_state = database::init_db(app_dir.clone()).expect("Failed to initialize database");
     
             let custom_rules = database::get_custom_rules(&db_state.conn.lock().unwrap()).unwrap_or_default();
+            
+            let blocked_ips_data = database::get_blocked_ips(&db_state.conn.lock().unwrap()).unwrap_or_default();
+            let blocked_ips_strings = blocked_ips_data.into_iter().map(|b| b.ip).collect::<Vec<String>>();
 
             let geoip_reader = Arc::new(RwLock::new(None));
             let geoip_reader_clone = geoip_reader.clone();
@@ -367,13 +403,20 @@ pub fn run() {
                 }
             });
 
+            // If IPS was active previously and we have blocked IPs or custom rules, we should theoretically start it.
+            let mut ips_engine = IpsEngine::new();
+            if !blocked_ips_strings.is_empty() || !custom_rules.is_empty() {
+                // To safely start it, we would apply the filter immediately
+                let _ = ips_engine.start(blocked_ips_strings.clone(), custom_rules.clone());
+            }
+
             app.manage(db_state);
             app.manage(AppState {
                 capture_flag: Mutex::new(None),
                 custom_rules: RwLock::new(custom_rules),
                 geoip_reader,
-                ips_engine: Arc::new(Mutex::new(IpsEngine::new())),
-                blocked_ips: Arc::new(RwLock::new(Vec::new())),
+                ips_engine: Arc::new(Mutex::new(ips_engine)),
+                blocked_ips: Arc::new(RwLock::new(blocked_ips_strings)),
                 auto_block_enabled: Arc::new(AtomicBool::new(false)),
             });
             Ok(())

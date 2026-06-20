@@ -198,6 +198,16 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                                             format!("{} (TCP {} -> {}) [{}]", srv, src_port, dst_port, p_data.tcp_flags[0])
                                         };
                                         p_data._ws_col_info = vec![info];
+
+                                        let data_offset = ((payload[12] >> 4) * 4) as usize;
+                                        if payload.len() > data_offset {
+                                            let l7_bytes = &payload[data_offset..];
+                                            let text = String::from_utf8_lossy(l7_bytes).to_string();
+                                            // Optional: remove null bytes for cleaner DB/JSON
+                                            p_data.payload = vec![text.replace('\0', ".")];
+                                        } else {
+                                            p_data.payload = vec!["".to_string()];
+                                        }
                                     }
                                 }
                                 17 => {
@@ -222,6 +232,14 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                                             format!("{} (UDP {} -> {})", srv, src_port, dst_port)
                                         };
                                         p_data._ws_col_info = vec![info];
+
+                                        if payload.len() > 8 {
+                                            let l7_bytes = &payload[8..];
+                                            let text = String::from_utf8_lossy(l7_bytes).to_string();
+                                            p_data.payload = vec![text.replace('\0', ".")];
+                                        } else {
+                                            p_data.payload = vec!["".to_string()];
+                                        }
                                     }
                                 }
                                 1 => {

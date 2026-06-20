@@ -21,6 +21,14 @@ pub struct AlertData {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BlockedIpData {
+    pub id: i64,
+    pub ip: String,
+    pub reason: String,
+    pub timestamp: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CustomRule {
     pub id: Option<i64>,
     pub name: String,
@@ -95,6 +103,16 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
             src_port TEXT,
             dst_port TEXT,
             is_active BOOLEAN NOT NULL DEFAULT 1
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS blocked_ips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT UNIQUE NOT NULL,
+            reason TEXT,
+            timestamp TEXT NOT NULL
         )",
         [],
     )?;
@@ -192,7 +210,58 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custo
         }
     }
 
-    // 2. Evaluate Hardcoded Rules only if no custom rule matched
+    // 2. Evaluate Deep Packet Inspection (DPI) Signatures
+    if impact_score == 0.0 && !payload.is_empty() {
+        let payload_lower = payload.to_lowercase();
+        
+        // SQL Injection (SQLi)
+        if payload_lower.contains("union select") || 
+           payload_lower.contains("select * from") || 
+           payload_lower.contains("drop table") || 
+           payload_lower.contains("1=1") || 
+           payload_lower.contains("or 1=1") || 
+           payload_lower.contains("or '1'='1'") {
+            impact_score = 10.0;
+            severity = "Critical";
+            port = dst_port;
+            protocol_str = proto_name;
+            info = "SQL Injection (SQLi) Payload Detected";
+        }
+        // Cross-Site Scripting (XSS)
+        else if payload_lower.contains("<script>") || 
+                payload_lower.contains("javascript:") || 
+                payload_lower.contains("onerror=") || 
+                payload_lower.contains("onload=") {
+            impact_score = 8.5;
+            severity = "High";
+            port = dst_port;
+            protocol_str = proto_name;
+            info = "Cross-Site Scripting (XSS) Payload Detected";
+        }
+        // Path Traversal
+        else if payload_lower.contains("../../") || 
+                payload_lower.contains("..\\..\\") || 
+                payload_lower.contains("%2e%2e%2f") {
+            impact_score = 8.0;
+            severity = "High";
+            port = dst_port;
+            protocol_str = proto_name;
+            info = "Directory Traversal Payload Detected";
+        }
+        // Command Injection
+        else if payload_lower.contains("/bin/bash") || 
+                payload_lower.contains("/bin/sh") || 
+                payload_lower.contains("cmd.exe") || 
+                payload_lower.contains("powershell.exe -e") {
+            impact_score = 10.0;
+            severity = "Critical";
+            port = dst_port;
+            protocol_str = proto_name;
+            info = "OS Command Injection Payload Detected";
+        }
+    }
+
+    // 3. Evaluate Hardcoded Rules only if no custom rule or DPI matched
     if impact_score == 0.0 {
         if proto == "1" { 
             impact_score = 2.0;
@@ -342,6 +411,54 @@ pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
         alerts.push(a?);
     }
     Ok(alerts)
+}
+
+pub fn get_blocked_ips(conn: &Connection) -> Result<Vec<BlockedIpData>> {
+    let mut stmt = conn.prepare("SELECT id, ip, reason, timestamp FROM blocked_ips ORDER BY timestamp DESC")?;
+    let ip_iter = stmt.query_map([], |row| {
+        Ok(BlockedIpData {
+            id: row.get(0)?,
+            ip: row.get(1)?,
+            reason: row.get(2)?,
+            timestamp: row.get(3)?,
+        })
+    })?;
+
+    let mut ips = Vec::new();
+    for ip in ip_iter {
+        ips.push(ip?);
+    }
+    Ok(ips)
+}
+
+pub fn insert_blocked_ip(conn: &Connection, ip: &str, reason: &str) -> Result<BlockedIpData> {
+    let timestamp = Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO blocked_ips (ip, reason, timestamp) VALUES (?1, ?2, ?3)",
+        params![ip, reason, timestamp],
+    )?;
+
+    // We can't use last_insert_rowid reliably with INSERT OR IGNORE if it was ignored, 
+    // so we fetch it back to get the real ID and Timestamp.
+    let mut stmt = conn.prepare("SELECT id, ip, reason, timestamp FROM blocked_ips WHERE ip = ?1")?;
+    let ip_data = stmt.query_row(params![ip], |row| {
+        Ok(BlockedIpData {
+            id: row.get(0)?,
+            ip: row.get(1)?,
+            reason: row.get(2)?,
+            timestamp: row.get(3)?,
+        })
+    })?;
+
+    Ok(ip_data)
+}
+
+pub fn remove_blocked_ip(conn: &Connection, ip: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM blocked_ips WHERE ip = ?1",
+        params![ip],
+    )?;
+    Ok(())
 }
 
 pub fn get_telemetry_stats(conn: &Connection) -> Result<TelemetryStats> {
