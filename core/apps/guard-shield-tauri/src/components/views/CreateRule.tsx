@@ -200,7 +200,7 @@ export default function CreateRule() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Alert">Alert Only</SelectItem>
-                    <SelectItem value="Drop" disabled>Drop Packet (Coming Soon)</SelectItem>
+                    <SelectItem value="Drop">Drop Packet</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

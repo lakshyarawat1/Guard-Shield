@@ -11,6 +11,7 @@ import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
 import React, { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import { listen } from "@tauri-apps/api/event";
 import { TableVirtuoso } from "react-virtuoso";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -33,10 +34,14 @@ export default function LiveTraffic() {
 
   const handleBlockIp = async (ip: string) => {
     try {
-      await invoke("block_ip", { ip });
-      alert(`Successfully blocked IP: ${ip}\nActive IPS rules updated. Traffic from this IP will now be dropped.`);
+      await invoke("block_ip", { ip, reason: "Manual Block from Live Traffic" });
+      toast.success(`Successfully blocked IP: ${ip}`, {
+        description: "Active IPS rules updated. Traffic from this IP will now be dropped."
+      });
     } catch (error) {
-      alert(`Failed to block IP: ${ip}\n${String(error)}`);
+      toast.error(`Failed to block IP: ${ip}`, {
+        description: String(error)
+      });
     }
   };
   const [filterProto, setFilterProto] = useState<string>("All");

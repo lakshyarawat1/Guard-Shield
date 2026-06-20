@@ -11,6 +11,7 @@ import { ScrollArea } from "../../components/ui/scroll-area";
 import { Badge } from "../../components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Switch } from "../../components/ui/switch";
+import { toast } from "sonner";
 import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -62,10 +63,14 @@ const Monitoring = () => {
 
   const handleBlockIp = async (ip: string) => {
     try {
-      await invoke("block_ip", { ip });
-      alert(`Successfully blocked IP: ${ip}\nActive IPS rules updated. Traffic from this IP will now be dropped.`);
+      await invoke("block_ip", { ip, reason: "Manual Block from Suspicious Traffic" });
+      toast.success(`Successfully blocked IP: ${ip}`, {
+        description: "Active IPS rules updated. Traffic from this IP will now be dropped."
+      });
     } catch (error) {
-      alert(`Failed to block IP: ${ip}\n${String(error)}`);
+      toast.error(`Failed to block IP: ${ip}`, {
+        description: String(error)
+      });
     }
   };
 

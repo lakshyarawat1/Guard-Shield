@@ -98,8 +98,8 @@ export function Header() {
       try {
         const count: number = await invoke("get_dropped_packets");
         setDroppedPackets(count);
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        toast.error(`Capture Error: ${e.toString()}`);
       }
     };
     
@@ -184,8 +184,10 @@ export function Header() {
         if (iface) {
           await invoke("start_packet_capture", { interfaceName: iface, bpfFilter: "" });
         }
-      } catch (e) {
-        console.error("Global capture start failed:", e);
+      } catch (e: any) {
+        toast.error(`Capture Error: ${e.toString()}`);
+        setIsCapturing(false);
+        localStorage.setItem("guard_shield_is_capturing", "false");
       }
     };
 
@@ -290,7 +292,7 @@ export function Header() {
                 localStorage.setItem("guard_shield_interface", val);
                 if (isCapturing) {
                   invoke("stop_packet_capture").then(() => {
-                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch(console.error);
+                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch((e: any) => toast.error(e.toString()));
                   });
                 }
               }}>
