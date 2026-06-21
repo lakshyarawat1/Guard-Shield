@@ -4,16 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { Header } from "./Header";
 import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from "recharts";
+import ReactECharts from "echarts-for-react";
+import { useTheme } from "../ThemeProvider";
 import { 
   Cpu, 
   Database, 
@@ -43,7 +35,20 @@ interface MetricHistoryPoint {
   packetsPerSec: number;
 }
 
+const getChartColors = (theme: "dark" | "light") => ({
+  text: theme === "dark" ? "#a1a1aa" : "#71717a",
+  border: theme === "dark" ? "#27272a" : "#e4e4e7",
+  popover: theme === "dark" ? "#09090b" : "#ffffff",
+  popoverText: theme === "dark" ? "#fafafa" : "#09090b",
+  foreground: theme === "dark" ? "#fafafa" : "#09090b",
+  chart4: "#eab308",
+  chart2: "#22c55e",
+  primary: "#3b82f6",
+});
+
 export default function SystemHealth() {
+  const { resolvedTheme } = useTheme();
+  const colors = getChartColors(resolvedTheme as "dark" | "light");
   const [dbStats, setDbStats] = useState<SystemHealthStats>({
     database_size_bytes: 0,
     total_packets: 0,
@@ -290,20 +295,26 @@ export default function SystemHealth() {
                     <span className="text-2xl font-bold tracking-tight">{currentCpu}%</span>
                   </div>
                   <div className="flex-1 min-h-[140px] mt-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={metricHistory} margin={{ top: 10, right: 0, left: -30, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                        <XAxis dataKey="time" hide />
-                        <YAxis stroke="var(--muted-foreground)" fontSize={10} domain={[0, 100]} tickLine={false} axisLine={false} />
-                        <Area type="linear" dataKey="cpu" stroke="var(--primary)" strokeWidth={2} fillOpacity={1} fill="url(#cpuGradient)" isAnimationActive={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <ReactECharts
+                      key={resolvedTheme}
+                      theme={resolvedTheme}
+                      option={{
+                        backgroundColor: 'transparent',
+                        animation: false,
+                        grid: { top: 10, right: 0, bottom: 0, left: -30, containLabel: false },
+                        xAxis: { type: 'category', data: metricHistory.map(d => d.time), show: false },
+                        yAxis: { type: 'value', min: 0, max: 100, show: false },
+                        series: [{
+                          data: metricHistory.map(d => d.cpu),
+                          type: 'line',
+                          symbol: 'none',
+                          areaStyle: { color: colors.primary, opacity: 0.2 },
+                          itemStyle: { color: colors.primary },
+                          lineStyle: { width: 2 }
+                        }]
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                    />
                   </div>
                 </div>
 
@@ -321,20 +332,26 @@ export default function SystemHealth() {
                     </span>
                   </div>
                   <div className="flex-1 min-h-[140px] mt-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={metricHistory} margin={{ top: 10, right: 0, left: -30, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--chart-4)" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="var(--chart-4)" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                        <XAxis dataKey="time" hide />
-                        <YAxis stroke="var(--muted-foreground)" fontSize={10} domain={[0, 100]} tickLine={false} axisLine={false} />
-                        <Area type="linear" dataKey="memory" stroke="var(--chart-4)" strokeWidth={2} fillOpacity={1} fill="url(#memGradient)" isAnimationActive={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <ReactECharts
+                      key={resolvedTheme}
+                      theme={resolvedTheme}
+                      option={{
+                        backgroundColor: 'transparent',
+                        animation: false,
+                        grid: { top: 10, right: 0, bottom: 0, left: -30, containLabel: false },
+                        xAxis: { type: 'category', data: metricHistory.map(d => d.time), show: false },
+                        yAxis: { type: 'value', min: 0, max: 100, show: false },
+                        series: [{
+                          data: metricHistory.map(d => d.memory),
+                          type: 'line',
+                          symbol: 'none',
+                          areaStyle: { color: colors.chart4, opacity: 0.2 },
+                          itemStyle: { color: colors.chart4 },
+                          lineStyle: { width: 2 }
+                        }]
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                    />
                   </div>
                 </div>
 
@@ -352,14 +369,25 @@ export default function SystemHealth() {
                     </span>
                   </div>
                   <div className="flex-1 min-h-[140px] mt-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={metricHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                        <XAxis dataKey="time" hide />
-                        <YAxis stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} />
-                        <Line type="linear" dataKey="packetsPerSec" stroke="var(--chart-2)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <ReactECharts
+                      key={resolvedTheme}
+                      theme={resolvedTheme}
+                      option={{
+                        backgroundColor: 'transparent',
+                        animation: false,
+                        grid: { top: 10, right: 10, bottom: 0, left: -20, containLabel: false },
+                        xAxis: { type: 'category', data: metricHistory.map(d => d.time), show: false },
+                        yAxis: { type: 'value', show: false },
+                        series: [{
+                          data: metricHistory.map(d => d.packetsPerSec),
+                          type: 'line',
+                          symbol: 'none',
+                          itemStyle: { color: colors.chart2 },
+                          lineStyle: { width: 2 }
+                        }]
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                    />
                   </div>
                 </div>
               </div>

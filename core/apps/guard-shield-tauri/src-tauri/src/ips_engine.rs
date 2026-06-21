@@ -21,7 +21,7 @@ impl IpsEngine {
         self.dropped_count.load(Ordering::Relaxed)
     }
 
-    pub fn start(&mut self, blocked_ips: Vec<String>, drop_rules: Vec<CustomRule>) -> Result<(), String> {
+    pub fn start(&mut self, blocked_ips: Vec<String>, drop_rules: Vec<CustomRule>, whitelisted_ips: Vec<String>) -> Result<(), String> {
         self.stop();
 
         self.current_ips = blocked_ips.clone();
@@ -98,13 +98,23 @@ impl IpsEngine {
             }
         }
 
-        let filter_str = if filters.is_empty() {
+        let mut filter_str = if filters.is_empty() {
             // Technically it's impossible to reach here without is_empty check above unless all rules are inactive/alert, but just in case.
             // If filters are empty but engine started, we should probably just return Ok(()) and not drop anything.
             return Ok(());
         } else {
             filters.join(" or ")
         };
+
+        // 3. Apply Global Whitelist Exceptions
+        if !whitelisted_ips.is_empty() {
+            let mut whitelist_filters = Vec::new();
+            for w_ip in whitelisted_ips {
+                whitelist_filters.push(format!("(ip.SrcAddr == '{}' or ip.DstAddr == '{}')", w_ip, w_ip));
+            }
+            let whitelist_str = whitelist_filters.join(" or ");
+            filter_str = format!("({}) and !({})", filter_str, whitelist_str);
+        }
 
         std::thread::spawn(move || {
             match WinDivert::network(&filter_str, 0, WinDivertFlags::new()) {

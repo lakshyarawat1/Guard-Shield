@@ -22,11 +22,25 @@
     Settings,
     ShieldCheck,
   } from "lucide-react";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { openCreateRuleWindow, openGeneralSettingsWindow, openNetworkingSettingsWindow } from "./Header";
 
 const Sidebar = () => {
   const navigate = useNavigate();
+  const [isVisible, setIsVisible] = useState(() => {
+    return localStorage.getItem("guard_shield_show_sidebar") !== "false";
+  });
+
+  useEffect(() => {
+    const handleSync = () => {
+      setIsVisible(localStorage.getItem("guard_shield_show_sidebar") !== "false");
+    };
+    window.addEventListener("toggle-sidebar", handleSync);
+    return () => window.removeEventListener("toggle-sidebar", handleSync);
+  }, []);
+
+  if (!isVisible) return null;
 
   return (
     <div className="w-56 shrink-0 border-r h-full py-4 px-3 max-h-screen overflow-hidden min-h-164">
@@ -59,7 +73,10 @@ const Sidebar = () => {
               <LineChart className="size-4" />
               <span>Filtering & Analysis</span>
             </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate('/event-timeline')}
+            >
               <Clock className="size-4" />
               <span>Event Timeline</span>
             </div>
@@ -82,14 +99,7 @@ const Sidebar = () => {
             </div>
             <div 
               className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => {
-                new WebviewWindow('create-rule', {
-                  url: '/#/create-rule',
-                  title: 'Create Custom Rule',
-                  width: 900,
-                  height: 700,
-                });
-              }}
+              onClick={openCreateRuleWindow}
             >
               <FilePlus className="size-4" />
               <span>Custom Rules</span>
@@ -107,9 +117,9 @@ const Sidebar = () => {
                 <Ban className="size-4 shrink-0" />
                 <span className="truncate">Blocked IPs</span>
               </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
-              <ShieldCheck className="size-4" />
-              <span>Whitelisted IPs</span>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors px-2 py-1.5 rounded-sm" onClick={() => navigate('/whitelisted-ips')}>
+              <ShieldCheck className="size-4 shrink-0" />
+              <span className="truncate">Whitelisted IPs</span>
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -123,7 +133,10 @@ const Sidebar = () => {
               <HeartPulse className="size-4" />
               <span>System Health</span>
             </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate('/audit-logs')}
+            >
               <ScrollText className="size-4" />
               <span>Audit Logs</span>
             </div>
@@ -134,28 +147,14 @@ const Sidebar = () => {
           <AccordionContent>
             <div 
               className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => {
-                new WebviewWindow('general-settings', {
-                  url: '/#/settings/general',
-                  title: 'General Settings',
-                  width: 900,
-                  height: 700,
-                });
-              }}
+              onClick={openGeneralSettingsWindow}
             >
               <Settings className="size-4" />
               <span>General Settings</span>
             </div>
             <div 
               className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => {
-                new WebviewWindow('networking-settings', {
-                  url: '/#/settings/networking',
-                  title: 'Networking Settings',
-                  width: 900,
-                  height: 700,
-                });
-              }}
+              onClick={openNetworkingSettingsWindow}
             >
               <NetworkIcon className="size-4" />
               <span>Networking Settings</span>

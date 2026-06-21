@@ -29,6 +29,24 @@ pub struct BlockedIpData {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WhitelistedIpData {
+    pub id: i64,
+    pub ip: String,
+    pub reason: String,
+    pub timestamp: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AuditLog {
+    pub id: i64,
+    pub timestamp: String,
+    pub log_type: String,
+    pub severity: String,
+    pub action: String,
+    pub details: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CustomRule {
     pub id: Option<i64>,
     pub name: String,
@@ -113,6 +131,28 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
             ip TEXT UNIQUE NOT NULL,
             reason TEXT,
             timestamp TEXT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS whitelisted_ips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT UNIQUE NOT NULL,
+            reason TEXT,
+            timestamp TEXT NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            log_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            action TEXT NOT NULL,
+            details TEXT
         )",
         [],
     )?;
@@ -309,10 +349,13 @@ pub fn insert_packet(conn: &Connection, p: &PacketData, counter: &mut u64, custo
             "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info, payload, src_country, dst_country, src_ip) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![ts, impact_score, severity, port, protocol_str, info, payload, src_country, dst_country, src_ip],
         ) {
+            let uppercase_severity = severity.to_uppercase();
+            let _ = log_audit_event(conn, "SYSTEM_EVENT", &uppercase_severity, "Intrusion Alert", &format!("IP: {}, Rule: {}", src_ip, info));
+            
             let id = conn.last_insert_rowid();
             alert = Some(AlertData {
                 id,
-                timestamp: ts,
+                timestamp: ts.clone(),
                 impact_score,
                 severity: severity.to_string(),
                 port: port.to_string(),
@@ -340,6 +383,9 @@ pub fn insert_mock_alert(conn: &Connection, severity: &str, impact: f64, src_ip:
         "INSERT INTO alerts (timestamp, impact_score, severity, port, protocol, info, src_ip) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![ts, impact, severity, port, protocol, info, src_ip],
     )?;
+
+    let uppercase_severity = severity.to_uppercase();
+    let _ = log_audit_event(conn, "SYSTEM_EVENT", &uppercase_severity, "Mock Intrusion Alert", &format!("IP: {}, Info: {}", src_ip, info));
 
     let id = conn.last_insert_rowid();
     Ok(AlertData {
@@ -461,6 +507,41 @@ pub fn remove_blocked_ip(conn: &Connection, ip: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn get_whitelisted_ips(conn: &Connection) -> Result<Vec<WhitelistedIpData>> {
+    let mut stmt = conn.prepare("SELECT id, ip, reason, timestamp FROM whitelisted_ips ORDER BY id DESC")?;
+    let ip_iter = stmt.query_map([], |row| {
+        Ok(WhitelistedIpData {
+            id: row.get(0)?,
+            ip: row.get(1)?,
+            reason: row.get(2)?,
+            timestamp: row.get(3)?,
+        })
+    })?;
+
+    let mut ips = Vec::new();
+    for ip in ip_iter {
+        ips.push(ip?);
+    }
+    Ok(ips)
+}
+
+pub fn insert_whitelisted_ip(conn: &Connection, ip: &str, reason: &str) -> Result<()> {
+    let timestamp = Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO whitelisted_ips (ip, reason, timestamp) VALUES (?1, ?2, ?3)",
+        params![ip, reason, timestamp],
+    )?;
+    Ok(())
+}
+
+pub fn remove_whitelisted_ip(conn: &Connection, ip: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM whitelisted_ips WHERE ip = ?1",
+        params![ip],
+    )?;
+    Ok(())
+}
+
 pub fn get_telemetry_stats(conn: &Connection) -> Result<TelemetryStats> {
     let total_alerts: i64 = conn.query_row("SELECT count(*) FROM alerts", [], |row| row.get(0)).unwrap_or(0);
     // Simple 24h check: we store timestamp as YYYY-MM-DDTHH:MM:SS. SQLite date function:
@@ -556,3 +637,77 @@ pub fn clear_database(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn log_audit_event(conn: &Connection, log_type: &str, severity: &str, action: &str, details: &str) -> Result<()> {
+    let timestamp = Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO audit_logs (timestamp, log_type, severity, action, details) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![timestamp, log_type, severity, action, details],
+    )?;
+    Ok(())
+}
+
+pub fn get_audit_logs(
+    conn: &Connection, 
+    log_type_filter: Option<String>, 
+    limit: i64,
+    offset: i64,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    category: Option<String>
+) -> Result<Vec<AuditLog>> {
+    let mut query = "SELECT id, timestamp, log_type, severity, action, details FROM audit_logs WHERE 1=1".to_string();
+    
+    let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
+    
+    if log_type_filter.is_some() {
+        query.push_str(&format!(" AND log_type = ?{}", params.len() + 1));
+        params.push(log_type_filter.as_ref().unwrap());
+    }
+    
+    if start_date.is_some() {
+        query.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
+        params.push(start_date.as_ref().unwrap());
+    }
+    
+    if end_date.is_some() {
+        query.push_str(&format!(" AND timestamp <= ?{}", params.len() + 1));
+        params.push(end_date.as_ref().unwrap());
+    }
+    
+    if let Some(cat) = &category {
+        if cat == "Engine Actions" {
+            query.push_str(" AND (action LIKE '%Start%' OR action LIKE '%Stop%' OR action LIKE '%Fail%')");
+        } else if cat == "Intrusion Alerts" {
+            query.push_str(" AND action LIKE '%Intrusion Alert%'");
+        }
+    }
+    
+    query.push_str(&format!(" ORDER BY id DESC LIMIT ?{} OFFSET ?{}", params.len() + 1, params.len() + 2));
+    params.push(&limit);
+    params.push(&offset);
+
+    let mut stmt = conn.prepare(&query)?;
+    
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.into_iter()), |row| {
+        Ok(AuditLog {
+            id: row.get(0)?,
+            timestamp: row.get(1)?,
+            log_type: row.get(2)?,
+            severity: row.get(3)?,
+            action: row.get(4)?,
+            details: row.get(5).unwrap_or_default(),
+        })
+    })?;
+
+    let mut logs = Vec::new();
+    for log in rows {
+        logs.push(log?);
+    }
+    
+    Ok(logs)
+}
+
+pub fn clear_audit_logs(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM audit_logs", [])?;
+    Ok(())
+}

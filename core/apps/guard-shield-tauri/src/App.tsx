@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import AnalyticsDashboard from "./components/views/AnalyticsDashboard";
 import LiveTraffic from "./components/views/LiveTraffic";
@@ -8,9 +9,18 @@ import ContactUs from "./components/views/ContactUs";
 import GeneralSettings from "./components/views/GeneralSettings";
 import SuspiciousTraffic from "./components/views/SuspiciousTraffic";
 import SystemHealth from "./components/views/SystemHealth";
-import BlockedIPs from "./components/views/BlockedIPs";
+import IpManagement from "./components/views/IpManagement";
+import AuditLogs from "./components/views/AuditLogs";
+import EventTimeline from "./components/views/EventTimeline";
+import WhoisLookup from "./components/views/WhoisLookup";
+import { applyFontSize } from "./components/views/Header";
 
 function App() {
+  useEffect(() => {
+    const savedSize = localStorage.getItem("guard_shield_font_size") || "medium";
+    applyFontSize(savedSize);
+  }, []);
+
   return (
     <Routes>
       <Route path="/" element={<AnalyticsDashboard />} />
@@ -21,8 +31,12 @@ function App() {
       <Route path="/profile" element={<Profile />} />
       <Route path="/create-rule" element={<CreateRule />} />
       <Route path="/contact" element={<ContactUs />} />
+      <Route path="/whois" element={<WhoisLookup />} />
       <Route path="/system-health" element={<SystemHealth />} />
-      <Route path="/blocked-ips" element={<BlockedIPs />} />
+      <Route path="/blocked-ips" element={<IpManagement />} />
+      <Route path="/whitelisted-ips" element={<IpManagement />} />
+      <Route path="/audit-logs" element={<AuditLogs />} />
+      <Route path="/event-timeline" element={<EventTimeline />} />
     </Routes>
   );
 }

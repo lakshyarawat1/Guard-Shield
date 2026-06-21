@@ -4,11 +4,13 @@ type Theme = "dark" | "light" | "system";
 
 type ThemeProviderState = {
   theme: Theme;
+  resolvedTheme: "dark" | "light";
   setTheme: (theme: Theme) => void;
 };
 
 const ThemeProviderContext = createContext<ThemeProviderState>({
   theme: "system",
+  resolvedTheme: "light",
   setTheme: () => null,
 });
 
@@ -34,8 +36,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return stored || "system";
   });
 
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() => 
+    theme === "system" ? getSystemTheme() : theme
+  );
+
   useEffect(() => {
     applyTheme(theme);
+    setResolvedTheme(theme === "system" ? getSystemTheme() : theme);
   }, [theme]);
 
   // Listen for OS theme changes when in "system" mode
@@ -44,6 +51,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const handler = () => {
       if (theme === "system") {
         applyTheme("system");
+        setResolvedTheme(getSystemTheme());
       }
     };
     media.addEventListener("change", handler);
@@ -52,6 +60,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const value = {
     theme,
+    resolvedTheme,
     setTheme: (newTheme: Theme) => {
       localStorage.setItem(STORAGE_KEY, newTheme);
       setTheme(newTheme);

@@ -6,6 +6,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuPortal,
 } from "../../components/ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -14,74 +21,74 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { toast } from "sonner";
 
-async function openProfileWindow() {
+
+async function openOrFocusWindow(
+  label: string,
+  url: string,
+  title: string,
+  width: number,
+  height: number
+) {
   try {
-    const win = new WebviewWindow('profile', {
-      url: '/#/profile',
-      title: 'My Profile',
-      width: 800,
-      height: 700,
+    const existing = await WebviewWindow.getByLabel(label);
+    if (existing) {
+      await existing.show();
+      await existing.setFocus();
+      return;
+    }
+    const win = new WebviewWindow(label, {
+      url,
+      title,
+      width,
+      height,
     });
-    // Wait for the window to be created, this will throw if there's an IPC permission error
     await win.once('tauri://created', function () {
-      console.log('Window created successfully');
+      console.log(`Window ${label} created successfully`);
     });
     win.once('tauri://error', function (e) {
-      // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
-      console.error('Tauri Error:', e);
-      alert('Failed to open window due to an internal error.');
+      console.error(`Tauri Error for ${label}:`, e);
+      alert(`Failed to open window due to an internal error.`);
     });
   } catch (e: any) {
-    // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
-    console.error("Error opening window:", e);
-    alert("Failed to open window.");
+    console.error(`Error opening window ${label}:`, e);
+    alert(`Failed to open window.`);
   }
 }
 
-async function openCreateRuleWindow() {
-  try {
-    const win = new WebviewWindow('create-rule', {
-      url: '/#/create-rule',
-      title: 'Create Custom Rule',
-      width: 900,
-      height: 700,
-    });
-    await win.once('tauri://created', function () {
-      console.log('Window created successfully');
-    });
-    win.once('tauri://error', function (e) {
-      // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
-      console.error('Tauri Error:', e);
-      alert('Failed to open window due to an internal error.');
-    });
-  } catch (e: any) {
-    // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
-    console.error("Error opening window:", e);
-    alert("Failed to open window.");
-  }
-}
+export const openProfileWindow = async () => {
+  await openOrFocusWindow('profile', '/#/profile', 'My Profile', 800, 700);
+};
+
+export const openCreateRuleWindow = async () => {
+  await openOrFocusWindow('create-rule', '/#/create-rule', 'Create Custom Rule', 900, 700);
+};
 
 export const openGeneralSettingsWindow = async () => {
-  try {
-    const win = new WebviewWindow('general-settings', {
-      url: '/#/settings/general',
-      title: 'General Settings',
-      width: 900,
-      height: 700,
-    });
-    await win.once('tauri://created', function () {
-      console.log('Window created successfully');
-    });
-    win.once('tauri://error', function (e) {
-      // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
-      console.error('Tauri Error:', e);
-      alert('Failed to open window due to an internal error.');
-    });
-  } catch (e: any) {
-    // SECURITY: Log detailed error to console but show generic message to avoid leaking internals
-    console.error("Error opening window:", e);
-    alert("Failed to open window.");
+  await openOrFocusWindow('general-settings', '/#/settings/general', 'General Settings', 900, 700);
+};
+
+export const openContactSupportWindow = async () => {
+  await openOrFocusWindow('contact-support', '/#/contact', 'Contact Support', 800, 650);
+};
+
+export const openWhoisLookupWindow = async () => {
+  await openOrFocusWindow('whois-lookup', '/#/whois', 'Whois Lookup', 900, 700);
+};
+
+export const openNetworkingSettingsWindow = async () => {
+  await openOrFocusWindow('networking-settings', '/#/settings/networking', 'Networking Settings', 900, 700);
+};
+
+export const applyFontSize = (size: string) => {
+  const root = document.documentElement;
+  if (size === "small") {
+    root.style.fontSize = "14px";
+  } else if (size === "large") {
+    root.style.fontSize = "18px";
+  } else {
+    root.style.fontSize = "16px"; // default medium
   }
 };
 
@@ -92,6 +99,34 @@ export function Header() {
   
   const [customRules, setCustomRules] = useState<{id: number, name: string, is_active: boolean}[]>([]);
   const [droppedPackets, setDroppedPackets] = useState<number>(0);
+  
+  const [fontSize, setFontSize] = useState<string>(() => {
+    return localStorage.getItem("guard_shield_font_size") || "medium";
+  });
+
+  const handleFontSizeChange = (size: string) => {
+    setFontSize(size);
+    localStorage.setItem("guard_shield_font_size", size);
+    applyFontSize(size);
+  };
+  
+  const [showSidebar, setShowSidebar] = useState<boolean>(() => {
+    return localStorage.getItem("guard_shield_show_sidebar") !== "false";
+  });
+
+  useEffect(() => {
+    const handleSync = () => {
+      setShowSidebar(localStorage.getItem("guard_shield_show_sidebar") !== "false");
+    };
+    window.addEventListener("toggle-sidebar", handleSync);
+    return () => window.removeEventListener("toggle-sidebar", handleSync);
+  }, []);
+
+  const handleToggleSidebar = () => {
+    const current = localStorage.getItem("guard_shield_show_sidebar") !== "false";
+    localStorage.setItem("guard_shield_show_sidebar", String(!current));
+    window.dispatchEvent(new Event("toggle-sidebar"));
+  };
 
   useEffect(() => {
     const fetchDroppedPackets = async () => {
@@ -212,6 +247,12 @@ export function Header() {
         e.preventDefault();
         handleStop();
       }
+      if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        const current = localStorage.getItem("guard_shield_show_sidebar") !== "false";
+        localStorage.setItem("guard_shield_show_sidebar", String(!current));
+        window.dispatchEvent(new Event("toggle-sidebar"));
+      }
     };
 
     window.addEventListener("ui-start-capture", handleStart);
@@ -280,6 +321,80 @@ export function Header() {
                   </DropdownMenuItem>
                 ))
               )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="flex items-center gap-2 px-4 cursor-pointer"
+                variant="outline"
+              >
+                View <ChevronDown className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[12rem]">
+              <DropdownMenuItem 
+                onSelect={handleToggleSidebar} 
+                className="flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${showSidebar ? "bg-emerald-500" : "bg-transparent"}`} />
+                  <span>Sidebar</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
+                  Ctrl+B
+                </span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="cursor-pointer">
+                  <span>Font Size</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup value={fontSize} onValueChange={handleFontSizeChange}>
+                      <DropdownMenuRadioItem value="small" className="cursor-pointer">
+                        Small
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="medium" className="cursor-pointer">
+                        Medium
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="large" className="cursor-pointer">
+                        Large
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="flex items-center gap-2 px-4 cursor-pointer"
+                variant="outline"
+              >
+                Tools <ChevronDown className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[12rem]">
+              <DropdownMenuItem 
+                onSelect={openWhoisLookupWindow} 
+                className="cursor-pointer"
+              >
+                Whois & DNS Lookup
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onSelect={openContactSupportWindow} 
+                className="cursor-pointer font-medium"
+              >
+                Contact Support
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
