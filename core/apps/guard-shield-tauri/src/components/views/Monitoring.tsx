@@ -74,10 +74,15 @@ const Monitoring = () => {
     }
   };
 
-  const filteredAlerts = (severityFilter === "All" 
-    ? alerts 
-    : alerts.filter(a => a.severity === severityFilter))
-    .filter(a => !showOnlyStarred || starredAlertIds.has(a.id));
+  // ⚡ Bolt Optimization: Memoize filteredAlerts to prevent returning a new array reference on every render.
+  // This is critical because sortedAlerts depends on filteredAlerts, and returning a new reference
+  // defeats the sortedAlerts useMemo, causing expensive sorting on every render cycle.
+  const filteredAlerts = useMemo(() => {
+    return (severityFilter === "All"
+      ? alerts
+      : alerts.filter(a => a.severity === severityFilter))
+      .filter(a => !showOnlyStarred || starredAlertIds.has(a.id));
+  }, [alerts, severityFilter, showOnlyStarred, starredAlertIds]);
 
   const sortedAlerts = useMemo(() => {
     const sortableAlerts = [...filteredAlerts];
