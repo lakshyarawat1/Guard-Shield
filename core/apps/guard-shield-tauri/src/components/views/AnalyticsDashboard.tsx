@@ -142,7 +142,10 @@ export default function AnalyticsDashboard() {
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
   }, [alerts]);
 
-  const criticalCount = alerts.filter(a => a.severity === "Critical").length;
+  // ⚡ Bolt Optimization: Memoize criticalCount calculation to prevent unnecessary O(n) array filter on every render.
+  const criticalCount = useMemo(() => {
+    return alerts.filter(a => a.severity === "Critical").length;
+  }, [alerts]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
