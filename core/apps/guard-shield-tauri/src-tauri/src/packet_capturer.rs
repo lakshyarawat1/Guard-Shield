@@ -28,6 +28,10 @@ pub struct PacketData {
     pub payload: Vec<String>,
     pub src_country: Vec<String>,
     pub dst_country: Vec<String>,
+    pub src_lat: Vec<String>,
+    pub src_lon: Vec<String>,
+    pub dst_lat: Vec<String>,
+    pub dst_lon: Vec<String>,
 }
 
 pub fn get_interfaces() -> Vec<String> {
@@ -168,6 +172,10 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                             payload: vec![hex::encode(&packet)],
                             src_country: vec![],
                             dst_country: vec![],
+                            src_lat: vec![],
+                            src_lon: vec![],
+                            dst_lat: vec![],
+                            dst_lon: vec![],
                         };
 
                         if packet.len() >= ihl as usize {
@@ -271,10 +279,8 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                             }
                         }
 
-                        if pass_filter {
-                            if sender.send(p_data).is_err() {
-                                break;
-                            }
+                        if pass_filter && sender.send(p_data).is_err() {
+                            break;
                         }
                     }
                 }

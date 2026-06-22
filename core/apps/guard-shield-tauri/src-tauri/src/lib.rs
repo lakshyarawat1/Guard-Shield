@@ -1,12 +1,14 @@
 mod database;
 mod packet_capturer;
 mod ips_engine;
+pub mod threat_feed;
 
 use crossbeam_channel::{unbounded, Receiver};
 use packet_capturer::PacketData;
 use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
 use tauri::{AppHandle, Emitter, State, Manager};
 use ips_engine::IpsEngine;
+use std::collections::HashSet;
 
 struct AppState {
     capture_flag: Mutex<Option<Arc<AtomicBool>>>,
@@ -16,7 +18,31 @@ struct AppState {
     blocked_ips: Arc<RwLock<Vec<String>>>,
     whitelisted_ips: Arc<RwLock<Vec<String>>>,
     auto_block_enabled: Arc<AtomicBool>,
+    malware_engine_enabled: Arc<AtomicBool>,
+    malware_active_mode: Arc<AtomicBool>,
+    malware_signatures_enabled: Arc<AtomicBool>,
+    malware_heuristics_enabled: Arc<AtomicBool>,
+    malware_autoban_enabled: Arc<AtomicBool>,
+    threat_ips: Arc<RwLock<HashSet<String>>>,
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct MalwareProtections {
+    signatures: bool,
+    heuristics: bool,
+    #[serde(rename = "autoBan")]
+    auto_ban: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct MalwareSettings {
+    #[serde(rename = "engineEnabled")]
+    engine_enabled: bool,
+    #[serde(rename = "activeMode")]
+    active_mode: bool,
+    protections: MalwareProtections,
+}
+
 
 #[tauri::command]
 fn get_network_interfaces() -> Vec<String> {
@@ -41,17 +67,33 @@ fn get_telemetry_stats(state: State<'_, database::DatabaseState>) -> Result<data
     database::get_telemetry_stats(&conn).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn perform_dns_lookup(query: String) -> Result<Vec<String>, String> {
+trait DnsResolver {
+    fn lookup_addr(&self, ip: &std::net::IpAddr) -> std::io::Result<String>;
+    fn lookup_host(&self, host: &str) -> std::io::Result<Vec<std::net::IpAddr>>;
+}
+
+struct RealDnsResolver;
+
+impl DnsResolver for RealDnsResolver {
+    fn lookup_addr(&self, ip: &std::net::IpAddr) -> std::io::Result<String> {
+        dns_lookup::lookup_addr(ip)
+    }
+
+    fn lookup_host(&self, host: &str) -> std::io::Result<Vec<std::net::IpAddr>> {
+        dns_lookup::lookup_host(host).map(|ips| ips.collect())
+    }
+}
+
+fn perform_dns_lookup_impl(query: String, resolver: &dyn DnsResolver) -> Result<Vec<String>, String> {
     // If it parses as an IP, try reverse lookup
     if let Ok(ip) = query.parse::<std::net::IpAddr>() {
-        match dns_lookup::lookup_addr(&ip) {
+        match resolver.lookup_addr(&ip) {
             Ok(host) => Ok(vec![host]),
             Err(e) => Err(format!("Reverse DNS lookup failed: {}", e)),
         }
     } else {
         // Forward lookup
-        match dns_lookup::lookup_host(&query) {
+        match resolver.lookup_host(&query) {
             Ok(ips) => {
                 let mut unique_ips = Vec::new();
                 for ip in ips {
@@ -69,6 +111,11 @@ fn perform_dns_lookup(query: String) -> Result<Vec<String>, String> {
             Err(e) => Err(format!("DNS lookup failed: {}", e)),
         }
     }
+}
+
+#[tauri::command]
+fn perform_dns_lookup(query: String) -> Result<Vec<String>, String> {
+    perform_dns_lookup_impl(query, &RealDnsResolver)
 }
 
 #[tauri::command]
@@ -497,21 +544,21 @@ fn start_packet_capture(
                                 }
                             }
 
-                            if let Ok(Some(alert)) = database::insert_packet(&conn, p, &mut counter, &rules) {
+                            let enable_malware_sigs = app_state.malware_signatures_enabled.load(Ordering::Relaxed);
+                            let threat_ips_lock = app_state.threat_ips.read().unwrap();
+                            if let Ok(Some(alert)) = database::insert_packet(&conn, p, &mut counter, &rules, enable_malware_sigs, &threat_ips_lock) {
                                 let _ = app_clone.emit("intrusion-alert", alert.clone());
                                 
                                 // Auto-Block logic for live traffic
-                                if (alert.severity == "Critical" || alert.severity == "High") && app_state.auto_block_enabled.load(Ordering::Relaxed) {
-                                    if !alert.src_ip.is_empty() {
-                                        let w_ips = app_state.whitelisted_ips.read().unwrap();
-                                        if !w_ips.contains(&alert.src_ip) {
-                                            let _ = database::insert_blocked_ip(&conn, &alert.src_ip, &format!("Auto-Blocked: Alert ID #{}", alert.id));
-                                            let mut ips = app_state.blocked_ips.write().unwrap();
-                                            if !ips.contains(&alert.src_ip) {
-                                                ips.push(alert.src_ip.clone());
-                                                if let Ok(mut engine) = app_state.ips_engine.lock() {
-                                                    let _ = engine.start(ips.clone(), app_state.custom_rules.read().unwrap().clone(), w_ips.clone());
-                                                }
+                                if (alert.severity == "Critical" || alert.severity == "High") && app_state.auto_block_enabled.load(Ordering::Relaxed) && !alert.src_ip.is_empty() {
+                                    let w_ips = app_state.whitelisted_ips.read().unwrap();
+                                    if !w_ips.contains(&alert.src_ip) {
+                                        let _ = database::insert_blocked_ip(&conn, &alert.src_ip, &format!("Auto-Blocked: Alert ID #{}", alert.id));
+                                        let mut ips = app_state.blocked_ips.write().unwrap();
+                                        if !ips.contains(&alert.src_ip) {
+                                            ips.push(alert.src_ip.clone());
+                                            if let Ok(mut engine) = app_state.ips_engine.lock() {
+                                                let _ = engine.start(ips.clone(), app_state.custom_rules.read().unwrap().clone(), w_ips.clone());
                                             }
                                         }
                                     }
@@ -553,6 +600,55 @@ fn get_audit_logs(
 fn clear_audit_logs(db_state: State<'_, database::DatabaseState>) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::clear_audit_logs(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_malware_settings(state: State<'_, AppState>) -> MalwareSettings {
+    MalwareSettings {
+        engine_enabled: state.malware_engine_enabled.load(Ordering::Relaxed),
+        active_mode: state.malware_active_mode.load(Ordering::Relaxed),
+        protections: MalwareProtections {
+            signatures: state.malware_signatures_enabled.load(Ordering::Relaxed),
+            heuristics: state.malware_heuristics_enabled.load(Ordering::Relaxed),
+            auto_ban: state.malware_autoban_enabled.load(Ordering::Relaxed),
+        },
+    }
+}
+
+#[tauri::command]
+fn set_malware_setting(state: State<'_, AppState>, key: String, value: bool) -> Result<(), String> {
+    match key.as_str() {
+        "engineEnabled" => { state.malware_engine_enabled.store(value, Ordering::Relaxed); }
+        "activeMode" => { state.malware_active_mode.store(value, Ordering::Relaxed); }
+        "signatures" => { state.malware_signatures_enabled.store(value, Ordering::Relaxed); }
+        "heuristics" => { state.malware_heuristics_enabled.store(value, Ordering::Relaxed); }
+        "autoBan" => { state.malware_autoban_enabled.store(value, Ordering::Relaxed); }
+        _ => return Err(format!("Unknown setting key: {}", key)),
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn sync_threat_feeds(app_state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>) -> Result<Vec<threat_feed::ThreatIndicator>, String> {
+    let indicators = threat_feed::sync_all_feeds().await?;
+    
+    // Update DB
+    let mut conn = db_state.conn.lock().unwrap();
+    database::save_threat_indicators(&mut conn, &indicators).map_err(|e| e.to_string())?;
+    
+    // Update Memory State
+    let mut ips_set = app_state.threat_ips.write().unwrap();
+    for ind in &indicators {
+        ips_set.insert(ind.indicator.clone());
+    }
+
+    Ok(indicators)
+}
+
+#[tauri::command]
+fn get_threat_feeds(db_state: State<'_, database::DatabaseState>) -> Result<Vec<threat_feed::ThreatIndicator>, String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::get_all_threat_indicators(&conn).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -604,6 +700,12 @@ pub fn run() {
                 let _ = ips_engine.start(blocked_ips_strings.clone(), custom_rules.clone(), whitelisted_ips_strings.clone());
             }
 
+            let threat_intel_inds = database::get_all_threat_indicators(&db_state.conn.lock().unwrap()).unwrap_or_default();
+            let mut threat_ips_set = HashSet::new();
+            for ind in threat_intel_inds {
+                threat_ips_set.insert(ind.indicator);
+            }
+
             app.manage(db_state);
             app.manage(AppState {
                 capture_flag: Mutex::new(None),
@@ -613,6 +715,12 @@ pub fn run() {
                 blocked_ips: Arc::new(RwLock::new(blocked_ips_strings)),
                 whitelisted_ips: Arc::new(RwLock::new(whitelisted_ips_strings)),
                 auto_block_enabled: Arc::new(AtomicBool::new(false)),
+                malware_engine_enabled: Arc::new(AtomicBool::new(true)),
+                malware_active_mode: Arc::new(AtomicBool::new(true)),
+                malware_signatures_enabled: Arc::new(AtomicBool::new(true)),
+                malware_heuristics_enabled: Arc::new(AtomicBool::new(false)),
+                malware_autoban_enabled: Arc::new(AtomicBool::new(true)),
+                threat_ips: Arc::new(RwLock::new(threat_ips_set)),
             });
             Ok(())
         })
@@ -624,6 +732,8 @@ pub fn run() {
             get_alerts,
             get_telemetry_stats,
             perform_dns_lookup,
+            sync_threat_feeds,
+            get_threat_feeds,
             add_custom_rule,
             fetch_custom_rules,
             remove_custom_rule,
@@ -642,7 +752,147 @@ pub fn run() {
             get_audit_logs,
             clear_audit_logs,
             toggle_auto_block,
+            get_malware_settings,
+            set_malware_setting,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::IpAddr;
+    use std::io::{Error, ErrorKind};
+
+    struct MockDnsResolver {
+        // Maps a host name to list of resolved IpAddrs or an error
+        hosts: std::collections::HashMap<String, std::io::Result<Vec<IpAddr>>>,
+        // Maps an IpAddr to a host name or an error
+        addrs: std::collections::HashMap<IpAddr, std::io::Result<String>>,
+    }
+
+    impl DnsResolver for MockDnsResolver {
+        fn lookup_addr(&self, ip: &IpAddr) -> std::io::Result<String> {
+            if let Some(res) = self.addrs.get(ip) {
+                match res {
+                    Ok(host) => Ok(host.clone()),
+                    Err(e) => Err(Error::new(e.kind(), e.to_string())),
+                }
+            } else {
+                Err(Error::new(ErrorKind::NotFound, "not found"))
+            }
+        }
+
+        fn lookup_host(&self, host: &str) -> std::io::Result<Vec<IpAddr>> {
+            if let Some(res) = self.hosts.get(host) {
+                match res {
+                    Ok(ips) => Ok(ips.clone()),
+                    Err(e) => Err(Error::new(e.kind(), e.to_string())),
+                }
+            } else {
+                Err(Error::new(ErrorKind::NotFound, "not found"))
+            }
+        }
+    }
+
+    #[test]
+    fn test_forward_lookup_success() {
+        let mut hosts = std::collections::HashMap::new();
+        let ip1 = "1.2.3.4".parse::<IpAddr>().unwrap();
+        let ip2 = "5.6.7.8".parse::<IpAddr>().unwrap();
+        hosts.insert("example.com".to_string(), Ok(vec![ip1, ip2]));
+
+        let resolver = MockDnsResolver {
+            hosts,
+            addrs: std::collections::HashMap::new(),
+        };
+
+        let result = perform_dns_lookup_impl("example.com".to_string(), &resolver);
+        assert_eq!(result, Ok(vec!["1.2.3.4".to_string(), "5.6.7.8".to_string()]));
+    }
+
+    #[test]
+    fn test_forward_lookup_dedup() {
+        let mut hosts = std::collections::HashMap::new();
+        let ip1 = "1.2.3.4".parse::<IpAddr>().unwrap();
+        let ip2 = "1.2.3.4".parse::<IpAddr>().unwrap();
+        hosts.insert("example.com".to_string(), Ok(vec![ip1, ip2]));
+
+        let resolver = MockDnsResolver {
+            hosts,
+            addrs: std::collections::HashMap::new(),
+        };
+
+        let result = perform_dns_lookup_impl("example.com".to_string(), &resolver);
+        assert_eq!(result, Ok(vec!["1.2.3.4".to_string()]));
+    }
+
+    #[test]
+    fn test_forward_lookup_empty() {
+        let mut hosts = std::collections::HashMap::new();
+        hosts.insert("empty.com".to_string(), Ok(vec![]));
+
+        let resolver = MockDnsResolver {
+            hosts,
+            addrs: std::collections::HashMap::new(),
+        };
+
+        let result = perform_dns_lookup_impl("empty.com".to_string(), &resolver);
+        assert_eq!(result, Err("No IP addresses found".to_string()));
+    }
+
+    #[test]
+    fn test_forward_lookup_failure() {
+        let mut hosts = std::collections::HashMap::new();
+        hosts.insert(
+            "fail.com".to_string(),
+            Err(Error::new(ErrorKind::ConnectionRefused, "dns resolution failed")),
+        );
+
+        let resolver = MockDnsResolver {
+            hosts,
+            addrs: std::collections::HashMap::new(),
+        };
+
+        let result = perform_dns_lookup_impl("fail.com".to_string(), &resolver);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("DNS lookup failed"));
+    }
+
+    #[test]
+    fn test_reverse_lookup_success() {
+        let mut addrs = std::collections::HashMap::new();
+        let ip = "8.8.8.8".parse::<IpAddr>().unwrap();
+        addrs.insert(ip, Ok("dns.google".to_string()));
+
+        let resolver = MockDnsResolver {
+            hosts: std::collections::HashMap::new(),
+            addrs,
+        };
+
+        let result = perform_dns_lookup_impl("8.8.8.8".to_string(), &resolver);
+        assert_eq!(result, Ok(vec!["dns.google".to_string()]));
+    }
+
+    #[test]
+    fn test_reverse_lookup_failure() {
+        let mut addrs = std::collections::HashMap::new();
+        let ip = "8.8.8.8".parse::<IpAddr>().unwrap();
+        addrs.insert(
+            ip,
+            Err(Error::new(ErrorKind::Other, "reverse lookup failed")),
+        );
+
+        let resolver = MockDnsResolver {
+            hosts: std::collections::HashMap::new(),
+            addrs,
+        };
+
+        let result = perform_dns_lookup_impl("8.8.8.8".to_string(), &resolver);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Reverse DNS lookup failed"));
+    }
 }
