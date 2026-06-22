@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ScrollArea } from "../ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -42,10 +42,14 @@ export default function AuditLogs() {
     }
   };
 
-  const filteredLogs = logs.filter(log => 
-    log.action.toLowerCase().includes(search.toLowerCase()) || 
-    log.details.toLowerCase().includes(search.toLowerCase())
-  );
+  // ⚡ Bolt Optimization: Memoize filtering to prevent O(n) string operations on every render
+  const filteredLogs = React.useMemo(() => {
+    const lowerSearch = search.toLowerCase();
+    return logs.filter(log =>
+      log.action.toLowerCase().includes(lowerSearch) ||
+      log.details.toLowerCase().includes(lowerSearch)
+    );
+  }, [logs, search]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

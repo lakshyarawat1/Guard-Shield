@@ -12,7 +12,7 @@ import { AlertCircle, ShieldAlert, Activity, Search, Ban, XCircle, Download, Mor
 import { Header } from "./Header";
 import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
-import { useState } from "react";
+import React, { useState } from "react";
 
 // Mock data for suspicious events
 const mockSuspiciousEvents = [
@@ -69,17 +69,20 @@ export default function SuspiciousTraffic() {
   const [severityFilter, setSeverityFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredEvents = events.filter((ev) => {
-    if (severityFilter !== "All" && ev.severity !== severityFilter) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (!ev.id.toLowerCase().includes(q) && 
-          !ev.type.toLowerCase().includes(q) && 
-          !ev.source.toLowerCase().includes(q) && 
-          !ev.target.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
+  // ⚡ Bolt Optimization: Memoize filtering to prevent O(n) string operations on every render
+  const filteredEvents = React.useMemo(() => {
+    return events.filter((ev) => {
+      if (severityFilter !== "All" && ev.severity !== severityFilter) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!ev.id.toLowerCase().includes(q) &&
+            !ev.type.toLowerCase().includes(q) &&
+            !ev.source.toLowerCase().includes(q) &&
+            !ev.target.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [events, severityFilter, searchQuery]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
