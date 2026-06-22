@@ -117,6 +117,10 @@ fn block_ip(
     state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
 ) -> Result<(), String> {
+    if ip.parse::<std::net::IpAddr>().is_err() {
+        return Err(format!("Invalid IP address format: {}", ip));
+    }
+
     {
         let w_ips = state.whitelisted_ips.read().unwrap();
         if w_ips.contains(&ip) {
@@ -180,6 +184,10 @@ fn whitelist_ip(
     state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
 ) -> Result<(), String> {
+    if ip.parse::<std::net::IpAddr>().is_err() {
+        return Err(format!("Invalid IP address format: {}", ip));
+    }
+
     {
         let b_ips = state.blocked_ips.read().unwrap();
         if b_ips.contains(&ip) {
@@ -303,6 +311,27 @@ fn trigger_mock_alert(
 
 #[tauri::command]
 fn add_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, rule: database::CustomRule) -> Result<i64, String> {
+    if let Some(src) = &rule.src_ip {
+        if !src.is_empty() && src.parse::<std::net::IpAddr>().is_err() {
+            return Err("Invalid source IP address".to_string());
+        }
+    }
+    if let Some(dst) = &rule.dst_ip {
+        if !dst.is_empty() && dst.parse::<std::net::IpAddr>().is_err() {
+            return Err("Invalid destination IP address".to_string());
+        }
+    }
+    if let Some(p) = &rule.src_port {
+        if !p.is_empty() && p.parse::<u16>().is_err() {
+            return Err("Invalid source port".to_string());
+        }
+    }
+    if let Some(p) = &rule.dst_port {
+        if !p.is_empty() && p.parse::<u16>().is_err() {
+            return Err("Invalid destination port".to_string());
+        }
+    }
+
     let conn = db_state.conn.lock().unwrap();
     let id = database::insert_custom_rule(&conn, &rule).map_err(|e| e.to_string())?;
     let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "Added Custom Rule", &format!("Rule '{}' for protocol {}", rule.name, rule.protocol));
