@@ -1,4 +1,4 @@
-import { Clock, Info, ShieldBan, Eye, XCircle, ArrowUpDown, ArrowDown, ArrowUp, Network } from "lucide-react";
+import { Clock, XCircle, ArrowUpDown, ArrowDown, ArrowUp, Network, Search, AlertTriangle, ShieldAlert, Activity, ShieldBan, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -9,7 +9,6 @@ import {
 } from "../../components/ui/table";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Badge } from "../../components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Switch } from "../../components/ui/switch";
 import { toast } from "sonner";
 import { Label } from "../../components/ui/label";
@@ -21,10 +20,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../../components/ui/tooltip";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "../../components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { HexViewer } from "./HexViewer";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 
 interface AlertData {
   id: number;
@@ -49,17 +52,18 @@ const Monitoring = () => {
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
   const [severityFilter, setSeverityFilter] = useState<string>("All");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const [selectedAlert, setSelectedAlert] = useState<AlertData | null>(null);
   const [showOnlyStarred, setShowOnlyStarred] = useState<boolean>(false);
-  const [starredAlertIds, setStarredAlertIds] = useState<Set<number>>(new Set());
-
-  const [showDevModal, setShowDevModal] = useState<boolean>(false);
-  const [devSeverity, setDevSeverity] = useState<string>("Critical");
-  const [devImpact, setDevImpact] = useState<number>(9.5);
-  const [devSrcIp, setDevSrcIp] = useState<string>("8.8.8.8");
-
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [severityFilter, searchQuery, showOnlyStarred]);
 
   const handleBlockIp = async (ip: string) => {
     try {
@@ -74,15 +78,16 @@ const Monitoring = () => {
     }
   };
 
-  // ⚡ Bolt Optimization: Memoize filteredAlerts to prevent returning a new array reference on every render.
-  // This is critical because sortedAlerts depends on filteredAlerts, and returning a new reference
-  // defeats the sortedAlerts useMemo, causing expensive sorting on every render cycle.
   const filteredAlerts = useMemo(() => {
-    return (severityFilter === "All"
-      ? alerts
-      : alerts.filter(a => a.severity === severityFilter))
-      .filter(a => !showOnlyStarred || starredAlertIds.has(a.id));
-  }, [alerts, severityFilter, showOnlyStarred, starredAlertIds]);
+    return alerts.filter(a => {
+      const matchSeverity = severityFilter === "All" || a.severity === severityFilter;
+      const matchStarred = !showOnlyStarred;
+      const matchSearch = searchQuery === "" || 
+                          (a.src_ip && a.src_ip.includes(searchQuery)) || 
+                          (a.info && a.info.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchSeverity && matchStarred && matchSearch;
+    });
+  }, [alerts, severityFilter, showOnlyStarred, searchQuery]);
 
   const sortedAlerts = useMemo(() => {
     const sortableAlerts = [...filteredAlerts];
@@ -133,6 +138,13 @@ const Monitoring = () => {
     return sortableAlerts;
   }, [filteredAlerts, sortConfig]);
 
+  const totalPages = Math.ceil(sortedAlerts.length / itemsPerPage);
+
+  const paginatedAlerts = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return sortedAlerts.slice(startIndex, startIndex + itemsPerPage);
+  }, [sortedAlerts, currentPage, itemsPerPage]);
+
   const requestSort = (key: string) => {
     let direction: "asc" | "desc" = "asc";
     if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
@@ -168,7 +180,7 @@ const Monitoring = () => {
 
     const setupListener = async () => {
       const unlisten = await listen<AlertData>("intrusion-alert", (event) => {
-          setAlerts((prev) => [event.payload, ...prev].slice(0, 100));
+          setAlerts((prev) => [event.payload, ...prev].slice(0, 500));
           setStats((prev) => ({
               total_alerts: prev.total_alerts + 1,
               last_24h_alerts: prev.last_24h_alerts + 1
@@ -185,169 +197,233 @@ const Monitoring = () => {
     };
   }, []);
 
-
-
   const getImpactColor = (impact: number) => {
     if (impact >= 8) return "bg-destructive text-white";
-    if (impact >= 6) return "bg-chart-5 text-primary-foreground";
-    if (impact >= 4) return "bg-chart-4 text-primary-foreground";
-    return "bg-chart-2 text-white";
+    if (impact >= 6) return "bg-orange-500 text-white";
+    if (impact >= 4) return "bg-yellow-500 text-black";
+    return "bg-blue-500 text-white";
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "Critical": return "bg-destructive text-white";
-      case "High": return "bg-chart-5 text-primary-foreground";
-      case "Medium": return "bg-chart-4 text-primary-foreground";
-      default: return "bg-chart-2 text-white";
+      case "High": return "bg-orange-500 text-white";
+      case "Medium": return "bg-yellow-500 text-black";
+      default: return "bg-blue-500 text-white";
     }
   };
 
+  const getRowGlowColor = (severity: string) => {
+    switch (severity) {
+      case "Critical": return "hover:bg-destructive/10 border-l-2 border-l-destructive";
+      case "High": return "hover:bg-orange-500/10 border-l-2 border-l-orange-500";
+      case "Medium": return "hover:bg-yellow-500/10 border-l-2 border-l-yellow-500";
+      default: return "hover:bg-blue-500/10 border-l-2 border-l-transparent";
+    }
+  };
+
+  // Recharts Data Processing
+  const severityCounts = useMemo(() => {
+    const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    alerts.forEach(a => {
+      if (counts[a.severity as keyof typeof counts] !== undefined) {
+        counts[a.severity as keyof typeof counts]++;
+      }
+    });
+    return [
+      { name: "Critical", value: counts.Critical, color: "#ef4444" },
+      { name: "High", value: counts.High, color: "#f97316" },
+      { name: "Medium", value: counts.Medium, color: "#eab308" },
+      { name: "Low", value: counts.Low, color: "#3b82f6" }
+    ].filter(d => d.value > 0);
+  }, [alerts]);
+
   return (
-    <div className="border rounded-md p-4">
-      <div className="text-sm font-semibold tracking-widest flex gap-12 items-center">
-        INTRUSION ATTEMPTS
-        <span className="flex gap-12 font-normal tracking-normal text-muted-foreground">
-          Total : {stats.total_alerts}{" "}
-          <span className="flex gap-3 items-center">
-            <Clock className="size-4" />
-            24 Hrs. : {stats.last_24h_alerts}
-          </span>
-        </span>
+    <div className="flex flex-col gap-6 p-4 h-full w-full bg-background overflow-hidden">
+      
+      {/* Hero Metrics Section */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-card/50 backdrop-blur border-border/50 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Intrusions</CardTitle>
+            <ShieldAlert className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats.total_alerts.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">All time events captured</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50 backdrop-blur border-border/50 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Last 24 Hours</CardTitle>
+            <Clock className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats.last_24h_alerts.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">Recent suspicious activity</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50 backdrop-blur border-border/50 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-rose-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Critical Threats</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-destructive">
+              {alerts.filter(a => a.severity === "Critical").length.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Require immediate attention</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50 backdrop-blur border-border/50 shadow-sm flex items-center justify-center h-full p-0">
+          {severityCounts.length > 0 ? (
+            <ResponsiveContainer width="100%" height={100}>
+              <PieChart>
+                <Pie
+                  data={severityCounts}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={30}
+                  outerRadius={45}
+                  paddingAngle={2}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {severityCounts.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip 
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', fontSize: '12px', borderRadius: '8px' }}
+                  itemStyle={{ color: 'hsl(var(--foreground))' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-xs text-muted-foreground flex flex-col items-center">
+              <Activity className="h-6 w-6 mb-2 opacity-20" />
+              No Data Available
+            </div>
+          )}
+        </Card>
       </div>
-      <div>
-        <div className="flex items-center gap-2 my-4">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Filter:</span>
-          {["All", "Critical", "High", "Medium", "Low"].map((level) => (
-            <button
-              key={level}
-              onClick={() => setSeverityFilter(level)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                severityFilter === level
-                  ? level === "Critical" ? "bg-destructive text-white"
-                    : level === "High" ? "bg-chart-5 text-primary-foreground"
-                    : level === "Medium" ? "bg-chart-4 text-primary-foreground"
-                    : level === "Low" ? "bg-chart-2 text-white"
-                    : "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              {level}
-            </button>
-          ))}
-          <div className="flex items-center space-x-2 border-l pl-4 border-border/50 ml-2">
-            <Switch id="starred-mode" checked={showOnlyStarred} onCheckedChange={setShowOnlyStarred} />
-            <Label htmlFor="starred-mode" className="text-xs cursor-pointer select-none">Show Starred</Label>
+
+      {/* Main Table Section */}
+      <div className="flex-1 border border-border/50 rounded-xl bg-card/30 backdrop-blur shadow-sm overflow-hidden flex flex-col relative min-h-0">
+        
+        {/* Controls Row */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-b border-border/50 bg-muted/20">
+          <Tabs value={severityFilter} onValueChange={setSeverityFilter} className="w-full sm:w-auto">
+            <TabsList className="bg-background/50 border border-border/50">
+              <TabsTrigger value="All" className="text-xs">All</TabsTrigger>
+              <TabsTrigger value="Critical" className="text-xs data-[state=active]:bg-destructive data-[state=active]:text-white">Critical</TabsTrigger>
+              <TabsTrigger value="High" className="text-xs data-[state=active]:bg-orange-500 data-[state=active]:text-white">High</TabsTrigger>
+              <TabsTrigger value="Medium" className="text-xs data-[state=active]:bg-yellow-500 data-[state=active]:text-black">Medium</TabsTrigger>
+              <TabsTrigger value="Low" className="text-xs data-[state=active]:bg-blue-500 data-[state=active]:text-white">Low</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                type="text" 
+                placeholder="Search IPs or payloads..." 
+                className="w-full sm:w-64 pl-8 h-8 text-xs bg-background/50 border-border/50 focus-visible:ring-1"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2 border-l border-border/50 pl-3">
+              <Switch id="starred-mode" checked={showOnlyStarred} onCheckedChange={setShowOnlyStarred} className="scale-75 origin-center" />
+              <Label htmlFor="starred-mode" className="text-xs cursor-pointer select-none text-muted-foreground">Starred</Label>
+            </div>
           </div>
-          <div className="flex-1"></div>
-          <Button variant="outline" size="sm" onClick={() => setShowDevModal(true)} className="gap-2 text-xs h-7 border-dashed">
-            <ShieldBan className="size-3" />
-            Simulate Alert (Dev)
-          </Button>
         </div>
-        <ScrollArea className="h-52">
+
+        {/* Table Area */}
+        <ScrollArea className="flex-1">
           <Table>
-            <TableHeader>
-              <TableRow>
+            <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-md">
+              <TableRow className="hover:bg-transparent border-border/50">
                 <TableHead 
-                  className="flex gap-3 items-center text-center cursor-pointer hover:bg-muted/60 transition-colors select-none"
+                  className="flex gap-3 items-center text-center cursor-pointer select-none h-10 py-2"
                   onClick={() => requestSort("Impact Score")}
                 >
-                  <div className="flex items-center">
-                    Impact Score {renderSortIcon("Impact Score")}
-                  </div>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Info className="text-blue-500 size-4 cursor-pointer" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-xs max-w-72">
-                          Impact Score represents the calculated risk or potential effect of an intrusion attempt, based on various factors associated with each unique ID. It is distinct from Severity, which categorizes the overall threat level.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <div className="flex items-center font-semibold">Impact {renderSortIcon("Impact Score")}</div>
                 </TableHead>
-                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Severity")}>
+                <TableHead className="cursor-pointer select-none font-semibold h-10 py-2" onClick={() => requestSort("Severity")}>
                   <div className="flex items-center">Severity {renderSortIcon("Severity")}</div>
                 </TableHead>
-                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Timestamp")}>
+                <TableHead className="cursor-pointer select-none font-semibold h-10 py-2" onClick={() => requestSort("Timestamp")}>
                   <div className="flex items-center">Timestamp {renderSortIcon("Timestamp")}</div>
                 </TableHead>
-                <TableHead>Source IP</TableHead>
-                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Port")}>
+                <TableHead className="font-semibold h-10 py-2">Source IP</TableHead>
+                <TableHead className="cursor-pointer select-none font-semibold h-10 py-2" onClick={() => requestSort("Port")}>
                   <div className="flex items-center">Port {renderSortIcon("Port")}</div>
                 </TableHead>
-                <TableHead className="text-right cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Protocol")}>
+                <TableHead className="text-right cursor-pointer select-none font-semibold h-10 py-2" onClick={() => requestSort("Protocol")}>
                   <div className="flex items-center justify-end">Protocol {renderSortIcon("Protocol")}</div>
                 </TableHead>
-                <TableHead className="cursor-pointer hover:bg-muted/60 transition-colors select-none" onClick={() => requestSort("Info")}>
+                <TableHead className="cursor-pointer select-none font-semibold h-10 py-2" onClick={() => requestSort("Info")}>
                   <div className="flex items-center">Info {renderSortIcon("Info")}</div>
                 </TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right font-semibold h-10 py-2">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className="group/tbody">
               {sortedAlerts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    No intrusion attempts detected.
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground border-border/50">
+                    <div className="flex flex-col items-center justify-center">
+                      <ShieldBan className="h-8 w-8 mb-2 opacity-20" />
+                      <p>No intrusion attempts found matching criteria.</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedAlerts.map((item) => (
-                  <TableRow key={item.id} onClick={() => setSelectedAlert(item)} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium w-[25%]">
-                      <Badge className={`rounded-sm px-2 text-md ${getImpactColor(item.impact_score)}`}>
+                paginatedAlerts.map((item) => (
+                  <TableRow 
+                    key={item.id} 
+                    onClick={() => setSelectedAlert(item)} 
+                    className={`group cursor-pointer transition-colors duration-200 border-border/50 ${getRowGlowColor(item.severity)}`}
+                  >
+                    <TableCell className="font-medium w-24">
+                      <Badge variant="outline" className={`rounded font-mono border-0 shadow-sm ${getImpactColor(item.impact_score)}`}>
                         {item.impact_score.toFixed(1)}
                       </Badge>
-                      <span className="ml-2 text-xs text-muted-foreground">ID: {item.id}</span>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`text-md rounded-sm text-center ${getSeverityColor(item.severity)}`}>
+                      <Badge variant="outline" className={`text-[10px] uppercase tracking-wider rounded font-bold border-0 shadow-sm ${getSeverityColor(item.severity)}`}>
                         {item.severity}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-xs text-muted-foreground font-mono">
                       {item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "—"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{item.src_ip || "—"}</TableCell>
-                    <TableCell>{item.port}</TableCell>
-                    <TableCell className="text-right">{item.protocol}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
+                    <TableCell className="font-mono text-xs font-semibold">{item.src_ip || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{item.port}</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">{item.protocol}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px] font-medium">
                       {item.info || "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button className="p-1 rounded hover:bg-accent transition-colors cursor-pointer" onClick={(e) => { e.stopPropagation(); if(item.src_ip) handleBlockIp(item.src_ip); }}>
-                                <ShieldBan className="size-3.5 text-destructive" />
-                              </button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); if(item.src_ip) handleBlockIp(item.src_ip); }}>
+                                <ShieldBan className="size-3.5" />
+                              </Button>
                             </TooltipTrigger>
                             <TooltipContent><p className="text-xs">Block Source IP</p></TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button className="p-1 rounded hover:bg-accent transition-colors cursor-pointer">
-                                <Eye className="size-3.5 text-muted-foreground" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent><p className="text-xs">View Details</p></TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button className="p-1 rounded hover:bg-accent transition-colors cursor-pointer">
-                                <XCircle className="size-3.5 text-muted-foreground" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent><p className="text-xs">False Positive</p></TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </div>
@@ -358,200 +434,166 @@ const Monitoring = () => {
             </TableBody>
           </Table>
         </ScrollArea>
+
+        {/* Pagination Footer */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-border/50 bg-muted/10 text-xs">
+          <div className="text-muted-foreground">
+            Showing <span className="font-semibold text-foreground">{sortedAlerts.length > 0 ? Math.min((currentPage - 1) * itemsPerPage + 1, sortedAlerts.length) : 0}</span> to{" "}
+            <span className="font-semibold text-foreground">{Math.min(currentPage * itemsPerPage, sortedAlerts.length)}</span> of{" "}
+            <span className="font-semibold text-foreground">{sortedAlerts.length}</span> alerts
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span className="sr-only">Previous Page</span>
+            </Button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                .map((page, idx, arr) => {
+                  const showEllipsisBefore = idx > 0 && page - arr[idx - 1] > 1;
+                  return (
+                    <div key={page} className="flex items-center gap-1">
+                      {showEllipsisBefore && <span className="px-2 text-muted-foreground">...</span>}
+                      <Button
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </Button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages || totalPages === 0}
+            >
+              <ChevronRight className="h-4 w-4" />
+              <span className="sr-only">Next Page</span>
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <Dialog open={selectedAlert !== null} onOpenChange={(open) => !open && setSelectedAlert(null)}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              Alert Details
-              {selectedAlert && (
-                <Badge className={`${getSeverityColor(selectedAlert.severity)} mr-6`}>
-                  {selectedAlert.severity}
-                </Badge>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedAlert && (() => {
-            const isStarred = starredAlertIds.has(selectedAlert.id);
-            const sourceIp = selectedAlert.info.split(" ").pop() || "Unknown";
-            return (
-              <div className="grid gap-4 py-4 text-sm">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground">ID</span>
-                  <span className="col-span-3">#{selectedAlert.id}</span>
+      {/* Slide-out Sheet for Alert Details */}
+      <Sheet open={selectedAlert !== null} onOpenChange={(open) => !open && setSelectedAlert(null)}>
+        <SheetContent className="sm:max-w-[500px] overflow-y-auto w-[90vw] border-l border-border/50 p-0 bg-background/95 backdrop-blur-xl shadow-2xl [&>button]:hidden">
+          {selectedAlert && (
+            <div className="flex flex-col h-full relative">
+              {/* Sheet Header with Gradient */}
+              <div className="relative p-6 border-b border-border/50 overflow-hidden">
+                <div className={`absolute inset-0 opacity-10 ${getSeverityColor(selectedAlert.severity)}`} />
+                <div className="relative flex justify-between items-start">
+                  <div>
+                    <Badge className={`mb-3 border-0 shadow-sm ${getSeverityColor(selectedAlert.severity)}`}>
+                      {selectedAlert.severity} Alert
+                    </Badge>
+                    <SheetTitle className="text-xl font-bold tracking-tight">Threat Details</SheetTitle>
+                    <SheetDescription className="text-xs font-mono mt-1 opacity-80">
+                      Event ID: #{selectedAlert.id} | {selectedAlert.timestamp}
+                    </SheetDescription>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-muted/50" onClick={() => setSelectedAlert(null)}>
+                    <XCircle className="h-5 w-5 text-muted-foreground" />
+                  </Button>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground">Timestamp</span>
-                  <span className="col-span-3">{selectedAlert.timestamp}</span>
+              </div>
+
+              {/* Sheet Content */}
+              <div className="p-6 flex-1 space-y-6">
+                
+                {/* Critical Action Bar */}
+                <div className="flex gap-2 p-3 bg-muted/30 rounded-lg border border-border/50 items-center justify-between shadow-sm">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source Origin</span>
+                    <span className="font-mono text-sm font-bold text-foreground">{selectedAlert.src_ip}</span>
+                  </div>
+                  <Button size="sm" variant="destructive" className="shadow-sm font-semibold" onClick={() => handleBlockIp(selectedAlert.src_ip)}>
+                    <ShieldBan className="h-3.5 w-3.5 mr-2" />
+                    Block Origin
+                  </Button>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground">Source</span>
-                  <span className="col-span-3 flex items-center justify-between">
-                    <span>{sourceIp}</span>
-                    <Button variant="destructive" size="sm" onClick={() => handleBlockIp(sourceIp)}>
-                      Block IP
-                    </Button>
-                  </span>
+
+                {/* Info Grid */}
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-1.5 bg-muted/10 p-3 rounded-md border border-border/30">
+                    <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">Protocol</span>
+                    <div className="font-mono text-foreground">{selectedAlert.protocol}</div>
+                  </div>
+                  <div className="space-y-1.5 bg-muted/10 p-3 rounded-md border border-border/30">
+                    <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">Target Port</span>
+                    <div className="font-mono text-foreground">{selectedAlert.port}</div>
+                  </div>
+                  <div className="space-y-1.5 bg-muted/10 p-3 rounded-md border border-border/30">
+                    <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">Impact Score</span>
+                    <div>
+                      <Badge variant="outline" className={`border-0 shadow-sm ${getImpactColor(selectedAlert.impact_score)}`}>
+                        {selectedAlert.impact_score.toFixed(1)} / 10
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 bg-muted/10 p-3 rounded-md border border-border/30">
+                    <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">Geo Origin</span>
+                    <div className="flex items-center gap-2 font-medium text-foreground">
+                      {selectedAlert.src_country === "LOCAL" ? (
+                        <div className="flex items-center gap-1.5 text-blue-500">
+                          <Network className="h-3.5 w-3.5" /> Local
+                        </div>
+                      ) : selectedAlert.src_country && selectedAlert.src_country !== "MOCK" ? (
+                        <>
+                          <img 
+                            src={`https://flagcdn.com/16x12/${selectedAlert.src_country.toLowerCase()}.png`} 
+                            alt={selectedAlert.src_country} 
+                            className="h-3 w-4 rounded-sm shadow-sm" 
+                          /> 
+                          {selectedAlert.src_country}
+                        </>
+                      ) : selectedAlert.src_country === "MOCK" ? (
+                        "Dev Simulation"
+                      ) : "Unknown"}
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground">Protocol</span>
-                  <span className="col-span-3">{selectedAlert.protocol}</span>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground">GeoIP Origin</span>
-                  <span className="col-span-3 flex items-center gap-2">
-                    {selectedAlert.src_country === "LOCAL" ? (
-                      <div className="flex items-center gap-1.5 text-blue-500 font-medium">
-                        <Network className="h-3.5 w-3.5" /> Local Network
-                      </div>
-                    ) : selectedAlert.src_country ? (
-                      <>
-                        <img 
-                          src={`https://flagcdn.com/16x12/${selectedAlert.src_country.toLowerCase()}.png`} 
-                          alt={selectedAlert.src_country} 
-                          className="h-3 w-4 rounded-sm border" 
-                        /> 
-                        {selectedAlert.src_country}
-                      </>
-                    ) : "Unknown"}
-                    
-                    <span className="text-muted-foreground mx-1">→</span>
-                    
-                    {selectedAlert.dst_country === "LOCAL" ? (
-                      <div className="flex items-center gap-1.5 text-blue-500 font-medium">
-                        <Network className="h-3.5 w-3.5" /> Local Network
-                      </div>
-                    ) : selectedAlert.dst_country ? (
-                      <>
-                        <img 
-                          src={`https://flagcdn.com/16x12/${selectedAlert.dst_country.toLowerCase()}.png`} 
-                          alt={selectedAlert.dst_country} 
-                          className="h-3 w-4 rounded-sm border" 
-                        /> 
-                        {selectedAlert.dst_country}
-                      </>
-                    ) : "Unknown"}
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground">Port</span>
-                  <span className="col-span-3">{selectedAlert.port}</span>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <span className="font-semibold text-muted-foreground flex items-center gap-2">
-                    Impact
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Info className="size-3" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-[200px] text-xs">Score indicating the potential risk level.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </span>
-                  <span className="col-span-3">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${getImpactColor(selectedAlert.impact_score)}`}>
-                      {selectedAlert.impact_score.toFixed(1)}
-                    </span>
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 items-start gap-4">
-                  <span className="font-semibold text-muted-foreground mt-1">Info</span>
-                  <div className="col-span-3 bg-muted p-3 rounded-md border font-mono text-xs break-all">
+
+                <div className="space-y-2">
+                  <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">Detection Info</span>
+                  <div className="bg-muted/20 p-3 rounded-md text-sm border border-border/50 leading-relaxed text-foreground shadow-inner">
                     {selectedAlert.info}
                   </div>
                 </div>
 
-                {selectedAlert.payload && (
-                  <div className="mt-4">
-                    <span className="font-semibold text-muted-foreground mb-2 block">Deep Packet Inspection (DPI)</span>
-                    <HexViewer payloadHex={selectedAlert.payload} />
+                {/* Hex Payload Viewer */}
+                <div className="space-y-2 pt-4 border-t border-border/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-foreground text-xs font-semibold uppercase tracking-wider flex items-center gap-2">
+                      Packet Payload <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-muted">RAW HEX</Badge>
+                    </span>
                   </div>
-                )}
-
-                <div className="mt-4 flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setSelectedAlert(null)}>Close</Button>
-                  <Button 
-                    variant={isStarred ? "destructive" : "default"}
-                    onClick={() => {
-                      setStarredAlertIds(prev => {
-                        const newSet = new Set(prev);
-                        if (isStarred) {
-                          newSet.delete(selectedAlert.id);
-                        } else {
-                          newSet.add(selectedAlert.id);
-                        }
-                        return newSet;
-                      });
-                    }}
-                  >
-                    {isStarred ? "Unstar Alert" : "Star / Flag Alert"}
-                  </Button>
+                  <div className="border border-border/50 rounded-md overflow-hidden bg-black/60 shadow-inner">
+                    <HexViewer payloadHex={selectedAlert.payload || ""} />
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
 
-      <Dialog open={showDevModal} onOpenChange={setShowDevModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Dev Options: Test Alert</DialogTitle>
-            <DialogDescription>
-              Simulate an incoming intrusion alert with a custom severity and impact score.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="severity">Severity</Label>
-              <select 
-                id="severity" 
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                value={devSeverity}
-                onChange={(e) => setDevSeverity(e.target.value)}
-              >
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="impact">Impact Score (0.0 - 10.0)</Label>
-              <Input
-                id="impact"
-                type="number"
-                step="0.1"
-                min="0"
-                max="10"
-                value={devImpact}
-                onChange={(e) => setDevImpact(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="srcIp">Source IP</Label>
-              <Input
-                id="srcIp"
-                type="text"
-                placeholder="e.g. 8.8.8.8"
-                value={devSrcIp}
-                onChange={(e) => setDevSrcIp(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowDevModal(false)}>Cancel</Button>
-            <Button onClick={() => {
-              invoke("trigger_mock_alert", { severity: devSeverity, impact: devImpact, srcIp: devSrcIp }).catch(console.error);
-              setShowDevModal(false);
-            }}>Send Alert</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          )}
+        </SheetContent>
+      </Sheet>
+
     </div>
   );
 };

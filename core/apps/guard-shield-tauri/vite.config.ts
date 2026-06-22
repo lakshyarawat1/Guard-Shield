@@ -34,4 +34,18 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("echarts") || id.includes("zrender")) {
+              return "echarts";
+            }
+            return "vendor";
+          }
+        },
+      },
+    },
+  },
 }));

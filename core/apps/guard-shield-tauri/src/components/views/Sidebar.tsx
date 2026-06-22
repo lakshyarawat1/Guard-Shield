@@ -24,7 +24,7 @@
   } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { openCreateRuleWindow, openGeneralSettingsWindow, openNetworkingSettingsWindow } from "./Header";
+import { openCreateRuleWindow, openGeneralSettingsWindow, openNetworkingSettingsWindow } from "../../utils/windows";
 
 const Sidebar = () => {
   const navigate = useNavigate();
@@ -62,17 +62,14 @@ const Sidebar = () => {
               <Radar className="size-4" />
               <span>Live Traffic</span>
             </div>
-            <div 
-              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => navigate("/suspicious-traffic")}
-            >
-              <SearchIcon className="size-4" />
-              <span>Suspicious Traffic</span>
-            </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
-              <LineChart className="size-4" />
-              <span>Filtering & Analysis</span>
-            </div>
+            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer" onClick={() => navigate('/suspicious-traffic')}>
+                <SearchIcon size={16} className="text-destructive" />
+                <span>Suspicious Traffic</span>
+              </div>
+              <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer" onClick={() => navigate('/global-map')}>
+                <LineChart size={16} className="text-primary" />
+                <span>Global Threat Map</span>
+              </div>
             <div 
               className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => navigate('/event-timeline')}
@@ -85,15 +82,24 @@ const Sidebar = () => {
         <AccordionItem value="Policy Management">
           <AccordionTrigger>Policy Management</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate('/malware-prevention')}
+            >
               <Code2 className="size-4" />
               <span>Malware Prevention</span>
             </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate('/inbound-rules')}
+            >
               <ArrowLeftCircle className="size-4" />
               <span>Inbound Rules</span>
             </div>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => navigate('/outbound-rules')}
+            >
               <ArrowRightCircle className="size-4" />
               <span>Outbound Rules</span>
             </div>
@@ -109,9 +115,12 @@ const Sidebar = () => {
         <AccordionItem value="Intelligence">
           <AccordionTrigger>Intelligence</AccordionTrigger>
           <AccordionContent>
-            <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer">
-              <Globe className="size-4" />
-              <span>Threat Feed</span>
+            <div 
+              className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors px-2 py-1.5 rounded-sm" 
+              onClick={() => navigate('/threat-feed')}
+            >
+              <Globe className="size-4 shrink-0" />
+              <span className="truncate">Threat Feed</span>
             </div>
               <div className="bar-options hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors px-2 py-1.5 rounded-sm" onClick={() => navigate('/blocked-ips')}>
                 <Ban className="size-4 shrink-0" />

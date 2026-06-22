@@ -257,11 +257,12 @@ const IpManagement = () => {
               </TabsContent>
 
             </Tabs>
-          </div>
+                </div>
         </div>
       </div>
     </div>
   );
 };
+
 
 export default IpManagement;

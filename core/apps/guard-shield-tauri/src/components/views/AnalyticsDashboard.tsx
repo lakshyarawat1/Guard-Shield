@@ -111,32 +111,28 @@ export default function AnalyticsDashboard() {
     };
   }, []);
 
-  const timelineData = useMemo(() => {
-    // Bucket alerts by Minute
-    type SeverityCounts = { Critical: number, High: number, Medium: number, Low: number };
-    const buckets: Record<string, SeverityCounts> = {};
-    
-    // Process all alerts
+  const scatterSeriesData = useMemo(() => {
+    const critical: [number, number, string, string, string][] = [];
+    const high: [number, number, string, string, string][] = [];
+    const medium: [number, number, string, string, string][] = [];
+    const low: [number, number, string, string, string][] = [];
+
     alerts.forEach(a => {
-      const d = new Date(a.timestamp);
-      d.setSeconds(0, 0);
-      const time = d.getTime();
-      
-      if (!buckets[time]) {
-        buckets[time] = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-      }
-      
-      if (a.severity === "Critical" || a.severity === "High" || a.severity === "Medium" || a.severity === "Low") {
-        buckets[time][a.severity as keyof SeverityCounts]++;
-      }
+      const timeMs = new Date(a.timestamp).getTime();
+      const val: [number, number, string, string, string] = [
+        timeMs,
+        a.impact_score,
+        a.info,
+        a.protocol,
+        a.port
+      ];
+      if (a.severity === "Critical") critical.push(val);
+      else if (a.severity === "High") high.push(val);
+      else if (a.severity === "Medium") medium.push(val);
+      else if (a.severity === "Low") low.push(val);
     });
 
-    return Object.entries(buckets)
-      .map(([time, counts]) => ({
-        time: Number(time),
-        ...counts
-      }))
-      .sort((a, b) => a.time - b.time);
+    return { critical, high, medium, low };
   }, [alerts]);
 
   const severityData = useMemo(() => {
@@ -223,37 +219,185 @@ export default function AnalyticsDashboard() {
             <div className="col-span-2 p-5 rounded-xl border bg-card shadow-sm flex flex-col">
               <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
                 <Activity className="size-5 text-primary" />
-                Alert Volume by Severity
+                Threat Scatter Matrix (Severity & Impact)
               </h3>
               <div className="flex-1 min-h-[250px]">
-                {timelineData.length > 0 ? (
+                {alerts.length > 0 ? (
                   <ReactECharts
                     key={resolvedTheme}
                     theme={resolvedTheme}
                     option={{
                       backgroundColor: 'transparent',
-                      tooltip: { 
-                        trigger: 'axis',
+                      tooltip: {
+                        trigger: 'item',
                         backgroundColor: colors.popover,
                         borderColor: colors.border,
-                        textStyle: { color: colors.popoverText }
+                        textStyle: { color: colors.popoverText },
+                        formatter: function (params: any) {
+                          const data = params.data;
+                          const time = new Date(data[0]).toLocaleString();
+                          const severity = params.seriesName;
+                          const severityColor = 
+                            severity === 'Critical' ? colors.destructive :
+                            severity === 'High' ? colors.chart5 :
+                            severity === 'Medium' ? colors.chart4 : colors.chart2;
+                          
+                          return `
+                            <div style="padding: 4px; font-family: sans-serif;">
+                              <div style="font-weight: 600; margin-bottom: 6px; border-bottom: 1px solid ${colors.border}; padding-bottom: 4px;">
+                                ${data[2]}
+                              </div>
+                              <div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 2px;">
+                                <span style="color: ${colors.text};">Severity:</span>
+                                <span style="font-weight: 600; color: ${severityColor};">${severity}</span>
+                              </div>
+                              <div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 2px;">
+                                <span style="color: ${colors.text};">Impact Score:</span>
+                                <span style="font-weight: 600;">${data[1].toFixed(1)}/10</span>
+                              </div>
+                              <div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 2px;">
+                                <span style="color: ${colors.text};">Protocol:</span>
+                                <span style="font-weight: 600;">${data[3]}</span>
+                              </div>
+                              <div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 2px;">
+                                <span style="color: ${colors.text};">Destination Port:</span>
+                                <span style="font-weight: 600;">${data[4]}</span>
+                              </div>
+                              <div style="display: flex; justify-content: space-between; gap: 15px;">
+                                <span style="color: ${colors.text};">Time:</span>
+                                <span style="font-weight: 600;">${time}</span>
+                              </div>
+                            </div>
+                          `;
+                        }
                       },
-                      legend: { top: 0, textStyle: { color: colors.foreground } },
-                      grid: { left: 30, right: 10, bottom: 20, top: 40 },
-                      xAxis: { type: 'time', axisLabel: { color: colors.text } },
-                      yAxis: { type: 'value', splitLine: { lineStyle: { color: colors.border } }, axisLabel: { color: colors.text } },
+                      legend: {
+                        top: 0,
+                        textStyle: { color: colors.foreground },
+                        data: ['Critical', 'High', 'Medium', 'Low'],
+                        icon: 'circle'
+                      },
+                      grid: { left: 40, right: 15, bottom: 25, top: 40 },
+                      xAxis: {
+                        type: 'time',
+                        axisLabel: { color: colors.text },
+                        splitLine: {
+                          show: true,
+                          lineStyle: { color: colors.border, type: 'dashed' }
+                        }
+                      },
+                      yAxis: {
+                        type: 'value',
+                        name: 'Impact',
+                        nameTextStyle: { color: colors.text, padding: [0, 0, 0, 30] },
+                        min: 0,
+                        max: 10,
+                        splitLine: {
+                          show: true,
+                          lineStyle: { color: colors.border }
+                        },
+                        axisLabel: { color: colors.text }
+                      },
                       series: [
-                        { name: 'Critical', type: 'bar', stack: 'total', itemStyle: { color: colors.destructive }, data: timelineData.map(d => [d.time, d.Critical]) },
-                        { name: 'High', type: 'bar', stack: 'total', itemStyle: { color: colors.chart5 }, data: timelineData.map(d => [d.time, d.High]) },
-                        { name: 'Medium', type: 'bar', stack: 'total', itemStyle: { color: colors.chart4 }, data: timelineData.map(d => [d.time, d.Medium]) },
-                        { name: 'Low', type: 'bar', stack: 'total', itemStyle: { color: colors.chart2 }, data: timelineData.map(d => [d.time, d.Low]) }
+                        {
+                          name: 'Critical',
+                          type: 'scatter',
+                          data: scatterSeriesData.critical,
+                          symbolSize: (data: any) => data[1] * 2 + 8,
+                          itemStyle: {
+                            color: colors.destructive,
+                            opacity: 0.85,
+                            shadowBlur: 10,
+                            shadowColor: 'rgba(239, 68, 68, 0.4)',
+                            borderColor: resolvedTheme === 'dark' ? '#09090b' : '#ffffff',
+                            borderWidth: 1.5
+                          },
+                          emphasis: {
+                            focus: 'series',
+                            itemStyle: {
+                              opacity: 1,
+                              shadowBlur: 15,
+                              shadowColor: 'rgba(239, 68, 68, 0.6)',
+                              borderWidth: 2
+                            }
+                          }
+                        },
+                        {
+                          name: 'High',
+                          type: 'scatter',
+                          data: scatterSeriesData.high,
+                          symbolSize: (data: any) => data[1] * 2 + 6,
+                          itemStyle: {
+                            color: colors.chart5,
+                            opacity: 0.85,
+                            shadowBlur: 8,
+                            shadowColor: 'rgba(249, 115, 22, 0.3)',
+                            borderColor: resolvedTheme === 'dark' ? '#09090b' : '#ffffff',
+                            borderWidth: 1.5
+                          },
+                          emphasis: {
+                            focus: 'series',
+                            itemStyle: {
+                              opacity: 1,
+                              shadowBlur: 12,
+                              shadowColor: 'rgba(249, 115, 22, 0.5)',
+                              borderWidth: 2
+                            }
+                          }
+                        },
+                        {
+                          name: 'Medium',
+                          type: 'scatter',
+                          data: scatterSeriesData.medium,
+                          symbolSize: (data: any) => data[1] * 2 + 6,
+                          itemStyle: {
+                            color: colors.chart4,
+                            opacity: 0.85,
+                            shadowBlur: 8,
+                            shadowColor: 'rgba(234, 179, 8, 0.3)',
+                            borderColor: resolvedTheme === 'dark' ? '#09090b' : '#ffffff',
+                            borderWidth: 1.5
+                          },
+                          emphasis: {
+                            focus: 'series',
+                            itemStyle: {
+                              opacity: 1,
+                              shadowBlur: 12,
+                              shadowColor: 'rgba(234, 179, 8, 0.5)',
+                              borderWidth: 2
+                            }
+                          }
+                        },
+                        {
+                          name: 'Low',
+                          type: 'scatter',
+                          data: scatterSeriesData.low,
+                          symbolSize: (data: any) => data[1] * 2 + 6,
+                          itemStyle: {
+                            color: colors.chart2,
+                            opacity: 0.85,
+                            shadowBlur: 8,
+                            shadowColor: 'rgba(34, 197, 94, 0.3)',
+                            borderColor: resolvedTheme === 'dark' ? '#09090b' : '#ffffff',
+                            borderWidth: 1.5
+                          },
+                          emphasis: {
+                            focus: 'series',
+                            itemStyle: {
+                              opacity: 1,
+                              shadowBlur: 12,
+                              shadowColor: 'rgba(34, 197, 94, 0.5)',
+                              borderWidth: 2
+                            }
+                          }
+                        }
                       ]
                     }}
                     style={{ height: '100%', width: '100%' }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted-foreground border-2 border-dashed rounded-lg">
-                    No timeline data
+                    No alert data
                   </div>
                 )}
               </div>

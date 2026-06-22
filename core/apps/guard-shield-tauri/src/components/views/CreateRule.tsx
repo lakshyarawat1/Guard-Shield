@@ -18,6 +18,7 @@ export interface CustomRule {
   protocol: string;
   src_port: string | null;
   dst_port: string | null;
+  direction: "Inbound" | "Outbound" | "Both";
   is_active: boolean;
 }
 
@@ -29,7 +30,7 @@ const ruleTemplates = [
     icon: <Ban className="size-5 text-destructive" />,
     type: "Industry Standard",
     badgeColor: "bg-destructive/10 text-destructive",
-    ruleDef: { name: "Block External SSH", description: "Drops all incoming SSH connections on port 22 to prevent brute force attacks.", action: "Alert", protocol: "TCP", src_ip: null, dst_ip: null, src_port: null, dst_port: "22", is_active: true }
+    ruleDef: { name: "Block External SSH", description: "Drops all incoming SSH connections on port 22 to prevent brute force attacks.", action: "Alert", protocol: "TCP", src_ip: null, dst_ip: null, src_port: null, dst_port: "22", direction: "Inbound", is_active: true }
   },
   {
     id: "drop-icmp",
@@ -38,7 +39,7 @@ const ruleTemplates = [
     icon: <Globe className="size-5 text-orange-500" />,
     type: "Basic Rule",
     badgeColor: "bg-orange-500/10 text-orange-500",
-    ruleDef: { name: "Drop ICMP (Ping)", description: "Drops all ICMP echo requests (ping) to hide from basic network scanners.", action: "Alert", protocol: "ICMP", src_ip: null, dst_ip: null, src_port: null, dst_port: null, is_active: true }
+    ruleDef: { name: "Drop ICMP (Ping)", description: "Drops all ICMP echo requests (ping) to hide from basic network scanners.", action: "Alert", protocol: "ICMP", src_ip: null, dst_ip: null, src_port: null, dst_port: null, direction: "Inbound", is_active: true }
   },
   {
     id: "allow-web",
@@ -47,7 +48,7 @@ const ruleTemplates = [
     icon: <Server className="size-5 text-emerald-500" />,
     type: "Industry Standard",
     badgeColor: "bg-emerald-500/10 text-emerald-500",
-    ruleDef: { name: "Allow Web Traffic", description: "Allows incoming TCP traffic on ports 80 (HTTP) and 443 (HTTPS).", action: "Alert", protocol: "TCP", src_ip: null, dst_ip: null, src_port: null, dst_port: "443", is_active: true }
+    ruleDef: { name: "Allow Web Traffic", description: "Allows incoming TCP traffic on ports 80 (HTTP) and 443 (HTTPS).", action: "Alert", protocol: "TCP", src_ip: null, dst_ip: null, src_port: null, dst_port: "443", direction: "Inbound", is_active: true }
   },
   {
     id: "block-malware-ports",
@@ -56,7 +57,7 @@ const ruleTemplates = [
     icon: <Shield className="size-5 text-indigo-500" />,
     type: "Advanced Rule",
     badgeColor: "bg-indigo-500/10 text-indigo-500",
-    ruleDef: { name: "Block Known Malware Ports", description: "Blocks a curated list of ports commonly used by trojans and ransomware.", action: "Alert", protocol: "TCP", src_ip: null, dst_ip: null, src_port: null, dst_port: "445", is_active: true }
+    ruleDef: { name: "Block Known Malware Ports", description: "Blocks a curated list of ports commonly used by trojans and ransomware.", action: "Alert", protocol: "TCP", src_ip: null, dst_ip: null, src_port: null, dst_port: "445", direction: "Both", is_active: true }
   }
 ];
 
@@ -73,6 +74,7 @@ export default function CreateRule() {
   const [dstIp, setDstIp] = useState("");
   const [srcPort, setSrcPort] = useState("");
   const [dstPort, setDstPort] = useState("");
+  const [direction, setDirection] = useState("Inbound");
 
   const loadRules = async () => {
     try {
@@ -96,11 +98,18 @@ export default function CreateRule() {
           dst_ip: dstIp.trim() || null,
           src_port: srcPort.trim() || null,
           dst_port: dstPort.trim() || null,
+          direction,
           is_active: true
         }
       });
       setIsBuilding(false);
-      setName(""); setDescription(""); setSrcIp(""); setDstIp(""); setSrcPort(""); setDstPort("");
+      setName(""); 
+      setDescription(""); 
+      setSrcIp(""); 
+      setDstIp(""); 
+      setSrcPort(""); 
+      setDstPort("");
+      setDirection("Inbound");
       loadRules();
     } catch(e) { console.error("Failed to save rule", e); }
   };
@@ -155,7 +164,7 @@ export default function CreateRule() {
                 <Select onValueChange={(val) => {
                   if (val === "custom") {
                     setName(""); setDescription(""); setProtocol("Any"); setAction("Alert");
-                    setSrcIp(""); setDstIp(""); setSrcPort(""); setDstPort("");
+                    setSrcIp(""); setDstIp(""); setSrcPort(""); setDstPort(""); setDirection("Inbound");
                     return;
                   }
                   const tmpl = ruleTemplates.find(t => t.id === val);
@@ -168,6 +177,7 @@ export default function CreateRule() {
                     setDstIp(tmpl.ruleDef.dst_ip || "");
                     setSrcPort(tmpl.ruleDef.src_port || "");
                     setDstPort(tmpl.ruleDef.dst_port || "");
+                    setDirection(tmpl.ruleDef.direction as any);
                   }
                 }}>
                   <SelectTrigger className="bg-background"><SelectValue placeholder="Select a template or build from scratch..." /></SelectTrigger>
@@ -193,7 +203,6 @@ export default function CreateRule() {
                   onChange={(e: any) => setDescription(e.target.value)} 
                 />
               </div>
-              
               <div className="space-y-2">
                 <Label>Action</Label>
                 <Select value={action} onValueChange={setAction}>
@@ -201,6 +210,18 @@ export default function CreateRule() {
                   <SelectContent>
                     <SelectItem value="Alert">Alert Only</SelectItem>
                     <SelectItem value="Drop">Drop Packet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Direction</Label>
+                <Select value={direction} onValueChange={setDirection}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Inbound">Inbound</SelectItem>
+                    <SelectItem value="Outbound">Outbound</SelectItem>
+                    <SelectItem value="Both">Both</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

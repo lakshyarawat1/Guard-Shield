@@ -17,7 +17,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useState, useEffect } from "react";
 import { useTheme } from "../ThemeProvider";
 import { useNavigate } from "react-router-dom";
-import { openNetworkingSettingsWindow, openWhoisLookupWindow, openContactSupportWindow } from "./Header";
+import { applyFontSize } from "./Header";
+import { openNetworkingSettingsWindow, openWhoisLookupWindow, openContactSupportWindow } from "../../utils/windows";
 import {
   Dialog,
   DialogContent,
@@ -28,8 +29,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-
-
+import { toast } from "sonner";
 
 const Infobar = () => {
   const navigate = useNavigate();
@@ -43,11 +43,26 @@ const Infobar = () => {
   const [dnsLoading, setDnsLoading] = useState(false);
   const { theme, setTheme } = useTheme();
 
-  const handleBlockIp = () => {
-    // Here we'd call the Tauri backend to block the IP
-    console.log("Blocking IP:", ipToBlock);
-    setIpToBlock("");
-    setQuickBlockOpen(false);
+  const [fontSize, setFontSize] = useState<string>(() => {
+    return localStorage.getItem("guard_shield_font_size") || "medium";
+  });
+
+  const handleFontSizeChange = (size: string) => {
+    setFontSize(size);
+    localStorage.setItem("guard_shield_font_size", size);
+    applyFontSize(size);
+  };
+
+  const handleBlockIp = async () => {
+    if (!ipToBlock.trim()) return;
+    try {
+      await invoke("block_ip", { ip: ipToBlock.trim(), reason: "Quick Blocked via Infobar" });
+      toast.success(`Successfully blocked IP: ${ipToBlock}`);
+      setIpToBlock("");
+      setQuickBlockOpen(false);
+    } catch (e) {
+      toast.error(`Failed to block IP: ${ipToBlock}`, { description: String(e) });
+    }
   };
 
   const toggleFullscreen = async () => {
@@ -164,8 +179,8 @@ const Infobar = () => {
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSeparator />
-            <MenubarItem>Blocked IPs</MenubarItem>
-            <MenubarItem>Whitelisted IPs</MenubarItem>
+            <MenubarItem onSelect={() => navigate('/blocked-ips')}>Blocked IPs</MenubarItem>
+            <MenubarItem onSelect={() => navigate('/whitelisted-ips')}>Whitelisted IPs</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
 
@@ -173,7 +188,7 @@ const Infobar = () => {
         <MenubarMenu>
           <MenubarTrigger>Security</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>
+            <MenubarItem onSelect={() => navigate('/threat-feed')}>
               Threat Feed <MenubarShortcut>Ctrl+T</MenubarShortcut>
             </MenubarItem>
             <MenubarItem>
@@ -246,9 +261,11 @@ const Infobar = () => {
             <MenubarSub>
               <MenubarSubTrigger>Font Size</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>Small</MenubarItem>
-                <MenubarItem>Default</MenubarItem>
-                <MenubarItem>Large</MenubarItem>
+                <MenubarRadioGroup value={fontSize} onValueChange={handleFontSizeChange}>
+                  <MenubarRadioItem value="small">Small</MenubarRadioItem>
+                  <MenubarRadioItem value="medium">Default</MenubarRadioItem>
+                  <MenubarRadioItem value="large">Large</MenubarRadioItem>
+                </MenubarRadioGroup>
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSeparator />

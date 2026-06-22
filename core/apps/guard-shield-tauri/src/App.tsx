@@ -13,6 +13,11 @@ import IpManagement from "./components/views/IpManagement";
 import AuditLogs from "./components/views/AuditLogs";
 import EventTimeline from "./components/views/EventTimeline";
 import WhoisLookup from "./components/views/WhoisLookup";
+import GlobalMap from "./components/views/GlobalMap";
+import MalwarePrevention from "./components/views/MalwarePrevention";
+import ThreatFeed from "./components/views/ThreatFeed";
+import InboundRules from "./components/views/InboundRules";
+import OutboundRules from "./components/views/OutboundRules";
 import { applyFontSize } from "./components/views/Header";
 
 function App() {
@@ -37,6 +42,11 @@ function App() {
       <Route path="/whitelisted-ips" element={<IpManagement />} />
       <Route path="/audit-logs" element={<AuditLogs />} />
       <Route path="/event-timeline" element={<EventTimeline />} />
+      <Route path="/global-map" element={<GlobalMap />} />
+      <Route path="/malware-prevention" element={<MalwarePrevention />} />
+      <Route path="/threat-feed" element={<ThreatFeed />} />
+      <Route path="/inbound-rules" element={<InboundRules />} />
+      <Route path="/outbound-rules" element={<OutboundRules />} />
     </Routes>
   );
 }
