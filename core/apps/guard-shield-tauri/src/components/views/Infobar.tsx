@@ -14,6 +14,8 @@ import {
 } from "../../components/ui/menubar";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { save, open } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useState, useEffect } from "react";
 import { useTheme } from "../ThemeProvider";
 import { useNavigate } from "react-router-dom";
@@ -101,6 +103,79 @@ const Infobar = () => {
     }
   };
 
+
+  const handleExportData = async (format: "csv" | "json") => {
+    try {
+      const alerts = await invoke<any>("get_alerts");
+      if (!Array.isArray(alerts) || alerts.length === 0) {
+        toast.info("No data available to export");
+        return;
+      }
+
+      let content = "";
+      let defaultFilename = `guard_shield_alerts_${new Date().toISOString().slice(0, 10)}`;
+
+      if (format === "json") {
+        content = JSON.stringify(alerts, null, 2);
+        defaultFilename += ".json";
+      } else {
+        const headers = Object.keys(alerts[0]).join(",");
+        const rows = alerts.map(a => Object.values(a).map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+        content = headers + "\n" + rows.join("\n");
+        defaultFilename += ".csv";
+      }
+
+      const filePath = await save({
+        defaultPath: defaultFilename,
+        filters: [{
+          name: format === "json" ? "JSON Files" : "CSV Files",
+          extensions: [format]
+        }]
+      });
+
+      if (!filePath) {
+        // User cancelled the dialog
+        return;
+      }
+
+      await writeTextFile(filePath, content);
+      toast.success(`Exported ${alerts.length} records to ${filePath}`);
+    } catch (e) {
+      toast.error("Export failed", { description: String(e) });
+    }
+  };
+
+  const handleSaveSnapshot = async () => {
+    try {
+      const filePath = await save({
+        defaultPath: `guard_shield_snapshot_${new Date().toISOString().split('T')[0]}.db`,
+        filters: [{ name: "Database Snapshot", extensions: ["db"] }]
+      });
+      if (filePath) {
+        await invoke("save_snapshot", { destination: filePath });
+        toast.success(`Snapshot saved successfully to ${filePath}`);
+      }
+    } catch (e) {
+      toast.error("Failed to save snapshot", { description: String(e) });
+    }
+  };
+
+  const handleRestoreSnapshot = async () => {
+    try {
+      const filePath = await open({
+        filters: [{ name: "Database Snapshot", extensions: ["db"] }],
+        multiple: false,
+        directory: false
+      });
+      if (filePath && !Array.isArray(filePath)) {
+        await invoke("restore_snapshot", { source: filePath });
+        toast.success("Snapshot restored successfully. App is restarting...");
+      }
+    } catch (e) {
+      toast.error("Failed to restore snapshot", { description: String(e) });
+    }
+  };
+
   return (
     <div className="w-full border-b py-2 text-sm">
       <Menubar className="border-none">
@@ -111,22 +186,22 @@ const Infobar = () => {
             <MenubarSub>
               <MenubarSubTrigger>Export Data</MenubarSubTrigger>
               <MenubarSubContent>
-                <MenubarItem>
+                <MenubarItem onSelect={() => handleExportData('csv')}>
                   Export as CSV <MenubarShortcut>Ctrl+Shift+E</MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem>Export as JSON</MenubarItem>
-                <MenubarItem>Export as PDF Report</MenubarItem>
+                <MenubarItem onSelect={() => handleExportData('json')}>Export as JSON</MenubarItem>
+                <MenubarItem onSelect={() => toast.info('PDF export coming soon')}>Export as PDF Report</MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
-            <MenubarItem>
-              Import Rules... <MenubarShortcut>Ctrl+I</MenubarShortcut>
+            <MenubarItem onSelect={handleRestoreSnapshot}>
+              Restore Snapshot... <MenubarShortcut>Ctrl+I</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>
-              Save Snapshot <MenubarShortcut>Ctrl+S</MenubarShortcut>
+            <MenubarItem onSelect={handleSaveSnapshot}>
+              Save Snapshot... <MenubarShortcut>Ctrl+S</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>
+            <MenubarItem onSelect={() => window.print()}>
               Print Report... <MenubarShortcut>Ctrl+P</MenubarShortcut>
             </MenubarItem>
           </MenubarContent>
@@ -143,19 +218,8 @@ const Infobar = () => {
               Stop Capture <MenubarShortcut>Ctrl+Shift+X</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>Pause All Alerts</MenubarItem>
-            <MenubarItem>Clear Alert History</MenubarItem>
-            <MenubarSeparator />
-            <MenubarSub>
-              <MenubarSubTrigger>Auto-Refresh</MenubarSubTrigger>
-              <MenubarSubContent>
-                <MenubarItem>5 seconds</MenubarItem>
-                <MenubarItem>10 seconds</MenubarItem>
-                <MenubarItem>30 seconds</MenubarItem>
-                <MenubarItem>1 minute</MenubarItem>
-                <MenubarItem>Off</MenubarItem>
-              </MenubarSubContent>
-            </MenubarSub>
+            <MenubarItem onSelect={() => toast.info('Pause Alerts coming soon')}>Pause All Alerts</MenubarItem>
+            <MenubarItem onSelect={() => toast.info('Clear Alert History coming soon')}>Clear Alert History</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
 
@@ -167,17 +231,8 @@ const Infobar = () => {
               Networking Settings <MenubarShortcut>Ctrl+N</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>Inbound Rules</MenubarItem>
-            <MenubarItem>Outbound Rules</MenubarItem>
-            <MenubarSeparator />
-            <MenubarSub>
-              <MenubarSubTrigger>Ports</MenubarSubTrigger>
-              <MenubarSubContent>
-                <MenubarItem>Well-Known Ports (0–1023)</MenubarItem>
-                <MenubarItem>Registered Ports (1024–49151)</MenubarItem>
-                <MenubarItem>Custom Port Ranges...</MenubarItem>
-              </MenubarSubContent>
-            </MenubarSub>
+            <MenubarItem onSelect={() => navigate('/inbound-rules')}>Inbound Rules</MenubarItem>
+            <MenubarItem onSelect={() => navigate('/outbound-rules')}>Outbound Rules</MenubarItem>
             <MenubarSeparator />
             <MenubarItem onSelect={() => navigate('/blocked-ips')}>Blocked IPs</MenubarItem>
             <MenubarItem onSelect={() => navigate('/whitelisted-ips')}>Whitelisted IPs</MenubarItem>
@@ -191,10 +246,7 @@ const Infobar = () => {
             <MenubarItem onSelect={() => navigate('/threat-feed')}>
               Threat Feed <MenubarShortcut>Ctrl+T</MenubarShortcut>
             </MenubarItem>
-            <MenubarItem>
-              Protocol Inspector <MenubarShortcut>Ctrl+R</MenubarShortcut>
-            </MenubarItem>
-            <MenubarSeparator />
+            
             <MenubarSub>
               <MenubarSubTrigger>IDS Mode</MenubarSubTrigger>
               <MenubarSubContent>
@@ -217,9 +269,7 @@ const Infobar = () => {
             <MenubarItem onSelect={() => setQuickBlockOpen(true)}>
               Quick Block IP... <MenubarShortcut>Ctrl+Shift+B</MenubarShortcut>
             </MenubarItem>
-            <MenubarItem>
-              Scan Network Now <MenubarShortcut>Ctrl+Shift+N</MenubarShortcut>
-            </MenubarItem>
+            
           </MenubarContent>
         </MenubarMenu>
 
@@ -232,7 +282,6 @@ const Infobar = () => {
             </MenubarItem>
             <MenubarItem onClick={() => navigate('/event-timeline')}>Event Timeline</MenubarItem>
             <MenubarSeparator />
-            <MenubarItem>Packet Decoder</MenubarItem>
             <MenubarItem onClick={() => setDnsLookupOpen(true)}>DNS Lookup</MenubarItem>
             <MenubarItem onSelect={openWhoisLookupWindow}>Whois Lookup</MenubarItem>
             <MenubarSeparator />
@@ -244,7 +293,7 @@ const Infobar = () => {
         <MenubarMenu>
           <MenubarTrigger>View</MenubarTrigger>
           <MenubarContent>
-            <MenubarItem>
+            <MenubarItem onSelect={() => window.dispatchEvent(new Event('toggle-sidebar'))}>
               Toggle Sidebar <MenubarShortcut>Ctrl+B</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
@@ -269,7 +318,7 @@ const Infobar = () => {
               </MenubarSubContent>
             </MenubarSub>
             <MenubarSeparator />
-            <MenubarItem>Reset Layout</MenubarItem>
+            <MenubarItem onSelect={() => { localStorage.clear(); window.location.reload(); }}>Reset Layout</MenubarItem>
             <MenubarItem onSelect={toggleFullscreen}>
               Fullscreen <MenubarShortcut>F11</MenubarShortcut>
             </MenubarItem>

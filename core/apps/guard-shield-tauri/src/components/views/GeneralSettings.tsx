@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Settings, Shield, HardDrive, Cpu, Save } from "lucide-react";
 import { Button } from "../ui/button";
@@ -6,6 +6,40 @@ import { Separator } from "../ui/separator";
 
 export default function GeneralSettings() {
   const [isClearing, setIsClearing] = useState(false);
+  const [settings, setSettings] = useState<Record<string, string>>({
+    realTimeProtection: "true",
+    heuristicsEngine: "true",
+    runOnStartup: "true",
+    hardwareAcceleration: "false",
+    sendTelemetry: "false",
+    notificationsCriticalOnly: "true",
+  });
+
+  const loadSettings = async () => {
+    try {
+      const fetched: Record<string, string> = await invoke("fetch_settings");
+      setSettings(prev => ({ ...prev, ...fetched }));
+    } catch (e) { console.error("Failed to load settings", e); }
+  };
+
+  useEffect(() => { loadSettings(); }, []);
+
+  const handleSave = async () => {
+    try {
+      await invoke("save_settings", { settings });
+      alert("Settings saved successfully.");
+    } catch (e) {
+      console.error("Failed to save settings", e);
+      alert("Error: " + e);
+    }
+  };
+
+  const toggleSetting = (key: string) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: prev[key] === "true" ? "false" : "true"
+    }));
+  };
 
   const handleClearDb = async () => {
     if (!window.confirm("Are you sure you want to clear all local logs? This will delete all packets and alerts, and shrink the database file size.")) {
@@ -37,7 +71,7 @@ export default function GeneralSettings() {
               Manage system-wide preferences, telemetry, and background behaviors.
             </p>
           </div>
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleSave}>
             <Save className="size-4 mr-2" />
             Apply Changes
           </Button>
@@ -58,8 +92,11 @@ export default function GeneralSettings() {
                   <p className="font-medium">Real-Time Protection</p>
                   <p className="text-sm text-muted-foreground">Actively scan incoming packets and block known threats automatically.</p>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary cursor-pointer">
-                  <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition" />
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.realTimeProtection === "true" ? 'bg-primary' : 'bg-muted'}`}
+                  onClick={() => toggleSetting("realTimeProtection")}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.realTimeProtection === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
                 </div>
               </div>
 
@@ -68,8 +105,24 @@ export default function GeneralSettings() {
                   <p className="font-medium">Heuristics Engine</p>
                   <p className="text-sm text-muted-foreground">Use AI to detect unusual behavior anomalies that aren't in the signature database.</p>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary cursor-pointer">
-                  <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition" />
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.heuristicsEngine === "true" ? 'bg-primary' : 'bg-muted'}`}
+                  onClick={() => toggleSetting("heuristicsEngine")}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.heuristicsEngine === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Critical / High Alerts Only</p>
+                  <p className="text-sm text-muted-foreground">Only show notifications for Critical or High severity threats. Mutes Low/Medium alerts.</p>
+                </div>
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.notificationsCriticalOnly === "true" ? 'bg-primary' : 'bg-muted'}`}
+                  onClick={() => toggleSetting("notificationsCriticalOnly")}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.notificationsCriticalOnly === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
                 </div>
               </div>
             </div>
@@ -89,8 +142,11 @@ export default function GeneralSettings() {
                   <p className="font-medium">Run on Startup</p>
                   <p className="text-sm text-muted-foreground">Launch Guard Shield in the background when your system starts.</p>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary cursor-pointer">
-                  <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition" />
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.runOnStartup === "true" ? 'bg-primary' : 'bg-muted'}`}
+                  onClick={() => toggleSetting("runOnStartup")}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.runOnStartup === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
                 </div>
               </div>
 
@@ -99,8 +155,11 @@ export default function GeneralSettings() {
                   <p className="font-medium">Hardware Acceleration</p>
                   <p className="text-sm text-muted-foreground">Offload packet inspection to available GPU compute for lower CPU overhead.</p>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-muted cursor-pointer">
-                  <span className="translate-x-1 inline-block h-4 w-4 transform rounded-full bg-white transition" />
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.hardwareAcceleration === "true" ? 'bg-primary' : 'bg-muted'}`}
+                  onClick={() => toggleSetting("hardwareAcceleration")}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.hardwareAcceleration === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
                 </div>
               </div>
             </div>
@@ -120,8 +179,11 @@ export default function GeneralSettings() {
                   <p className="font-medium">Send Anonymous Usage Data</p>
                   <p className="text-sm text-muted-foreground">Help us improve by sending non-identifiable crash reports and metrics.</p>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-muted cursor-pointer">
-                  <span className="translate-x-1 inline-block h-4 w-4 transform rounded-full bg-white transition" />
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.sendTelemetry === "true" ? 'bg-primary' : 'bg-muted'}`}
+                  onClick={() => toggleSetting("sendTelemetry")}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.sendTelemetry === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
                 </div>
               </div>
               

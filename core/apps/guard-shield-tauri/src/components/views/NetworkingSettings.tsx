@@ -1,10 +1,45 @@
-import { Network, Shield, Wifi, Globe, Server } from "lucide-react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { Network, Shield, Wifi, Globe, Server, Save } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Separator } from "../ui/separator";
 
 export default function NetworkingSettings() {
+  const [settings, setSettings] = useState<Record<string, string>>({
+    dnsPrimary: "1.1.1.1",
+    dnsSecondary: "8.8.8.8",
+    proxyUrl: "",
+    firewallOverride: "false"
+  });
+
+  const loadSettings = async () => {
+    try {
+      const fetched: Record<string, string> = await invoke("fetch_settings");
+      setSettings(prev => ({ ...prev, ...fetched }));
+    } catch (e) { console.error("Failed to load settings", e); }
+  };
+
+  useEffect(() => { loadSettings(); }, []);
+
+  const handleSave = async () => {
+    try {
+      await invoke("save_settings", { settings });
+      alert("Networking settings saved successfully.");
+    } catch (e) {
+      console.error("Failed to save settings", e);
+      alert("Error: " + e);
+    }
+  };
+
+  const handleSettingChange = (key: string, value: string) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const toggleFirewall = () => {
+    setSettings(prev => ({ ...prev, firewallOverride: prev.firewallOverride === "true" ? "false" : "true" }));
+  };
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       
@@ -19,7 +54,8 @@ export default function NetworkingSettings() {
               Configure system network interfaces, DNS, and traffic routing.
             </p>
           </div>
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleSave}>
+            <Save className="size-4 mr-2" />
             Save Changes
           </Button>
         </div>
@@ -104,31 +140,43 @@ export default function NetworkingSettings() {
               <div className="space-y-4 max-w-md">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium">Primary DNS</label>
-                  <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" defaultValue="1.1.1.1" />
+                  <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={settings.dnsPrimary} onChange={e => handleSettingChange("dnsPrimary", e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium">Secondary DNS</label>
-                  <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" defaultValue="8.8.8.8" />
+                  <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={settings.dnsSecondary} onChange={e => handleSettingChange("dnsSecondary", e.target.value)} />
                 </div>
               </div>
             </div>
           </TabsContent>
 
           <TabsContent value="proxy">
-            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 flex items-center justify-center h-48 border-dashed">
-              <p className="text-muted-foreground flex flex-col items-center gap-2">
-                <Server className="size-8 opacity-50" />
-                Proxy configuration options will appear here.
-              </p>
+            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 max-w-xl">
+              <h3 className="font-semibold text-lg mb-4">Proxy Configuration</h3>
+              <p className="text-sm text-muted-foreground mb-4">Route traffic through a custom proxy server (e.g. SOCKS5 or HTTP/S).</p>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Proxy URL</label>
+                <input type="text" placeholder="socks5://127.0.0.1:9050" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={settings.proxyUrl} onChange={e => handleSettingChange("proxyUrl", e.target.value)} />
+              </div>
             </div>
           </TabsContent>
 
           <TabsContent value="firewall">
-            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 flex items-center justify-center h-48 border-dashed">
-              <p className="text-muted-foreground flex flex-col items-center gap-2">
-                <Shield className="size-8 opacity-50" />
-                Global Firewall overrides.
-              </p>
+            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 max-w-xl">
+              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2"><Shield className="size-5 text-destructive" /> Global Firewall Bypass</h3>
+              <Separator className="mb-4" />
+              <div className="flex items-center justify-between mt-6">
+                <div>
+                  <p className="font-medium">Disable System Firewall Integration</p>
+                  <p className="text-sm text-muted-foreground max-w-[300px]">Stop Guard Shield from interacting with Windows Defender Firewall automatically.</p>
+                </div>
+                <div 
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.firewallOverride === "true" ? 'bg-destructive' : 'bg-muted'}`}
+                  onClick={toggleFirewall}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.firewallOverride === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </div>
             </div>
           </TabsContent>
 

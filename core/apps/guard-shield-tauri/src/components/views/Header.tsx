@@ -1,5 +1,5 @@
 
-import { Activity, Bell, ChevronDown, Monitor, Shield, ShieldAlert, ShieldBan } from "lucide-react";
+import { Activity, Bell, ChevronDown, Shield, ShieldAlert, ShieldBan } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import {
   DropdownMenu,
@@ -9,7 +9,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -30,13 +30,47 @@ export const applyFontSize = (size: string) => {
   }
 };
 
+// Global telemetry variables removed to favor component state and proper React lifecycle
+
 export function Header() {
   const [isCapturing, setIsCapturing] = useState<boolean>(() => {
     return localStorage.getItem("guard_shield_is_capturing") === "true";
   });
-  
-  const [customRules, setCustomRules] = useState<{id: number, name: string, is_active: boolean}[]>([]);
+  const [recentAlerts, setRecentAlerts] = useState<any[]>([]);
+  const [threatCount, setThreatCount] = useState<number>(0);
   const [droppedPackets, setDroppedPackets] = useState<number>(0);
+  const notifCriticalOnlyRef = useRef<boolean>(true);
+  const [isSnoozed, setIsSnoozed] = useState(false);
+  const [customRules, setCustomRules] = useState<{id: number, name: string, is_active: boolean}[]>([]);
+
+  useEffect(() => {
+    invoke("fetch_settings").then((res: any) => {
+      if (res.notificationsCriticalOnly === "false") {
+        notifCriticalOnlyRef.current = false;
+      }
+    }).catch(console.error);
+    
+    const interval = setInterval(() => {
+      const snoozeUntilStr = localStorage.getItem("guard_shield_snooze_until") || "0";
+      const snoozeUntil = parseInt(snoozeUntilStr, 10);
+      setIsSnoozed(Date.now() < snoozeUntil);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSnoozeToggle = () => {
+    if (isSnoozed) {
+      localStorage.setItem("guard_shield_snooze_until", "0");
+      setIsSnoozed(false);
+      toast.success("Notifications enabled");
+    } else {
+      const until = Date.now() + 3600000;
+      localStorage.setItem("guard_shield_snooze_until", until.toString());
+      setIsSnoozed(true);
+      toast.dismiss(); // Clear any queued toasts instantly
+      toast.info("Notifications snoozed for 1 hour");
+    }
+  };
 
   useEffect(() => {
     const fetchDroppedPackets = async () => {
@@ -69,10 +103,68 @@ export function Header() {
     return () => clearInterval(interval);
   }, []);
   
-  const [threatCount, setThreatCount] = useState<number>(0);
   const [packetRate, setPacketRate] = useState<number>(0);
   const [interfaces, setInterfaces] = useState<string[]>([]);
   const [selectedInterface, setSelectedInterface] = useState<string>(() => localStorage.getItem("guard_shield_interface") || "");
+
+  useEffect(() => {
+    invoke("get_telemetry_stats").then((s: any) => {
+      setThreatCount(s.total_alerts || 0);
+    }).catch(console.error);
+
+    let unlistenAlertPromise: Promise<() => void>;
+    
+    const setupAlerts = () => {
+      unlistenAlertPromise = listen("intrusion-alert", (event: any) => {
+        setThreatCount(prev => prev + 1);
+        const alert = event.payload;
+        setRecentAlerts(prev => [alert, ...prev].slice(0, 5));
+
+        const snoozeUntilStr = localStorage.getItem("guard_shield_snooze_until") || "0";
+        const snoozeUntil = parseInt(snoozeUntilStr, 10);
+        if (Date.now() < snoozeUntil) return;
+
+        if (notifCriticalOnlyRef.current && alert.severity !== "Critical" && alert.severity !== "High") return;
+
+        const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        
+        toast.error(`[${timeStr}] Threat Blocked: ${alert.src_ip}`, {
+          description: alert.reason,
+          action: {
+            label: "Snooze 1h",
+            onClick: () => {
+               const until = Date.now() + 3600000;
+               localStorage.setItem("guard_shield_snooze_until", until.toString());
+               toast.dismiss(); // Clear any queued toasts instantly
+               toast.info("Notifications snoozed for 1 hour");
+            }
+          }
+        });
+      });
+    };
+    setupAlerts();
+
+    let unlistenPacketsPromise: Promise<() => void>;
+    let packetCountInSec = 0;
+
+    const setupPackets = () => {
+      unlistenPacketsPromise = listen<any[]>("packets-batch", (event) => {
+        packetCountInSec += event.payload.length;
+      });
+    };
+    setupPackets();
+
+    const interval = setInterval(() => {
+      setPacketRate(packetCountInSec);
+      packetCountInSec = 0;
+    }, 1000);
+
+    return () => {
+      if (unlistenAlertPromise) unlistenAlertPromise.then(f => f());
+      if (unlistenPacketsPromise) unlistenPacketsPromise.then(f => f());
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     invoke<string[]>("get_network_interfaces").then(ifaces => {
@@ -86,35 +178,6 @@ export function Header() {
         setSelectedInterface(savedIface);
       }
     }).catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    let unlistenAlert: () => void;
-    let unlistenPackets: () => void;
-    let packetCountInSec = 0;
-
-    invoke("get_telemetry_stats").then((s: any) => setThreatCount(s.total_alerts)).catch(console.error);
-
-    const setupTelemetry = async () => {
-      unlistenAlert = await listen("intrusion-alert", () => {
-        setThreatCount(prev => prev + 1);
-      });
-      unlistenPackets = await listen<any[]>("packets-batch", (event) => {
-        packetCountInSec += event.payload.length;
-      });
-    };
-    setupTelemetry();
-
-    const interval = setInterval(() => {
-      setPacketRate(packetCountInSec);
-      packetCountInSec = 0;
-    }, 1000);
-
-    return () => {
-      if (unlistenAlert) unlistenAlert();
-      if (unlistenPackets) unlistenPackets();
-      clearInterval(interval);
-    };
   }, []);
 
   useEffect(() => {
@@ -169,7 +232,6 @@ export function Header() {
     window.addEventListener("ui-stop-capture", handleStop);
     window.addEventListener("keydown", handleKeyDown);
 
-    // Initial boot capture check
     if (isCapturing) {
       startBackendCapture();
     } else {
@@ -218,7 +280,7 @@ export function Header() {
                     key={rule.id} 
                     className="flex items-center justify-between cursor-pointer"
                     onSelect={(e) => {
-                      e.preventDefault(); // Don't close dropdown on toggle
+                      e.preventDefault();
                       invoke("toggle_custom_rule_state", { id: rule.id, isActive: !rule.is_active });
                     }}
                   >
@@ -233,8 +295,6 @@ export function Header() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-
-
         </div>
 
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
@@ -269,23 +329,28 @@ export function Header() {
               </span>
             </div>
             <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Activity className="size-3" />
-              <span>{packetRate} pkt/s</span>
+            <div className="flex flex-col items-end justify-center">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Threats Blocked</span>
+              <span className="text-sm font-bold text-destructive leading-none mt-0.5">{threatCount}</span>
             </div>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ShieldAlert className="size-3" />
-              <span>{threatCount} threats</span>
+            <Separator orientation="vertical" className="h-6 mx-1" />
+            <div className="flex flex-col items-start justify-center">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Packet Rate</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <Activity className="size-3 text-emerald-500 animate-pulse" />
+                <span className="text-sm font-bold leading-none">{packetRate} <span className="text-[10px] font-medium text-muted-foreground">p/s</span></span>
+              </div>
             </div>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ShieldBan className="size-3 text-destructive" />
-              <span className="font-medium text-destructive">{droppedPackets} dropped</span>
+            <Separator orientation="vertical" className="h-6 mx-1" />
+            <div className="flex flex-col items-start justify-center">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Dropped</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <ShieldBan className="size-3 text-destructive" />
+                <span className="text-sm font-bold text-destructive leading-none">{droppedPackets}</span>
+              </div>
             </div>
           </div>
           <nav className="flex gap-2 items-center">
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" className="cursor-pointer relative">
@@ -296,33 +361,31 @@ export function Header() {
               <DropdownMenuContent align="end" className="w-80">
                 <div className="flex items-center justify-between px-4 py-2 border-b">
                   <span className="font-semibold">Notifications</span>
-                  <Badge variant="secondary" className="text-xs">3 new</Badge>
+                  <Badge variant="secondary" className="text-xs">{recentAlerts.length} new</Badge>
+                </div>
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20">
+                  <span className="text-sm">Snooze (1 Hour)</span>
+                  <div 
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full cursor-pointer transition-colors ${isSnoozed ? 'bg-primary' : 'bg-muted'}`}
+                    onClick={(e) => { e.preventDefault(); handleSnoozeToggle(); }}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isSnoozed ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </div>
                 </div>
                 <div className="flex flex-col max-h-[300px] overflow-y-auto">
-                  <DropdownMenuItem className="flex flex-col items-start gap-1 p-4 cursor-pointer border-b rounded-none focus:bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <Shield className="size-4 text-destructive" />
-                      <span className="font-semibold text-sm">Threat Blocked</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Blocked an incoming connection on port 22 from 192.168.1.45</span>
-                    <span className="text-xs text-muted-foreground opacity-50 mt-1">2 mins ago</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="flex flex-col items-start gap-1 p-4 cursor-pointer border-b rounded-none focus:bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <Monitor className="size-4 text-emerald-500" />
-                      <span className="font-semibold text-sm">System Update</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Guard Shield rules successfully updated to latest signatures.</span>
-                    <span className="text-xs text-muted-foreground opacity-50 mt-1">1 hour ago</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="flex flex-col items-start gap-1 p-4 cursor-pointer rounded-none focus:bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <Shield className="size-4 text-primary" />
-                      <span className="font-semibold text-sm">Scan Complete</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Weekly deep packet inspection scan completed with 0 issues.</span>
-                    <span className="text-xs text-muted-foreground opacity-50 mt-1">Yesterday</span>
-                  </DropdownMenuItem>
+                  {recentAlerts.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground text-sm">No recent alerts</div>
+                  ) : (
+                    recentAlerts.map((alert, idx) => (
+                      <DropdownMenuItem key={idx} className="flex flex-col items-start gap-1 p-4 cursor-pointer border-b rounded-none focus:bg-muted/50">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className={`size-4 ${alert.severity === 'Critical' ? 'text-destructive' : (alert.severity === 'High' ? 'text-orange-500' : 'text-yellow-500')}`} />
+                          <span className="font-semibold text-sm">Threat Blocked</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{alert.reason} from {alert.src_ip}</span>
+                      </DropdownMenuItem>
+                    ))
+                  )}
                 </div>
                 <div className="p-2 border-t text-center">
                   <Button variant="ghost" className="w-full text-xs h-8 cursor-pointer">Mark all as read</Button>

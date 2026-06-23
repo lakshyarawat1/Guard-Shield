@@ -1,4 +1,4 @@
-import { Shield, Ban, AlertCircle, Plus, Trash2, Power, PowerOff, Save, X, Server, Globe } from "lucide-react";
+import { Shield, Ban, AlertCircle, Plus, Trash2, Power, PowerOff, Save, X, Server, Globe, Edit2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "../ui/button";
@@ -64,6 +64,7 @@ const ruleTemplates = [
 export default function CreateRule() {
   const [rules, setRules] = useState<CustomRule[]>([]);
   const [isBuilding, setIsBuilding] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   
   // Builder State
   const [name, setName] = useState("");
@@ -88,21 +89,27 @@ export default function CreateRule() {
   const handleSaveRule = async () => {
     if (!name.trim()) return;
     try {
-      await invoke("add_custom_rule", {
-        rule: {
-          name: name.trim(),
-          description: description.trim(),
-          action,
-          protocol,
-          src_ip: srcIp.trim() || null,
-          dst_ip: dstIp.trim() || null,
-          src_port: srcPort.trim() || null,
-          dst_port: dstPort.trim() || null,
-          direction,
-          is_active: true
-        }
-      });
+      const ruleData = {
+        name: name.trim(),
+        description: description.trim(),
+        action,
+        protocol,
+        src_ip: srcIp.trim() || null,
+        dst_ip: dstIp.trim() || null,
+        src_port: srcPort.trim() || null,
+        dst_port: dstPort.trim() || null,
+        direction,
+        is_active: true
+      };
+
+      if (editingRuleId !== null) {
+        await invoke("edit_custom_rule", { id: editingRuleId, rule: ruleData });
+      } else {
+        await invoke("add_custom_rule", { rule: ruleData });
+      }
+
       setIsBuilding(false);
+      setEditingRuleId(null);
       setName(""); 
       setDescription(""); 
       setSrcIp(""); 
@@ -112,6 +119,20 @@ export default function CreateRule() {
       setDirection("Inbound");
       loadRules();
     } catch(e) { console.error("Failed to save rule", e); }
+  };
+
+  const handleEditClick = (rule: CustomRule) => {
+    setEditingRuleId(rule.id!);
+    setName(rule.name);
+    setDescription(rule.description || "");
+    setProtocol(rule.protocol);
+    setAction(rule.action);
+    setSrcIp(rule.src_ip || "");
+    setDstIp(rule.dst_ip || "");
+    setSrcPort(rule.src_port || "");
+    setDstPort(rule.dst_port || "");
+    setDirection(rule.direction);
+    setIsBuilding(true);
   };
 
   const handleToggle = async (id: number, current: boolean) => {
@@ -142,7 +163,12 @@ export default function CreateRule() {
             </p>
           </div>
           {!isBuilding && (
-            <Button onClick={() => setIsBuilding(true)} className="gap-2">
+            <Button onClick={() => {
+                setEditingRuleId(null);
+                setName(""); setDescription(""); setProtocol("Any"); setAction("Alert");
+                setSrcIp(""); setDstIp(""); setSrcPort(""); setDstPort(""); setDirection("Inbound");
+                setIsBuilding(true);
+            }} className="gap-2">
               <Plus className="size-4" /> New Rule
             </Button>
           )}
@@ -151,8 +177,8 @@ export default function CreateRule() {
         {isBuilding && (
           <div className="mb-8 rounded-sm border bg-card text-card-foreground shadow-sm p-6 animate-in slide-in-from-top-4 fade-in">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold">Rule Builder</h3>
-              <Button variant="ghost" size="icon" onClick={() => setIsBuilding(false)}>
+              <h3 className="text-xl font-bold">{editingRuleId ? "Edit Rule" : "Rule Builder"}</h3>
+              <Button variant="ghost" size="icon" onClick={() => { setIsBuilding(false); setEditingRuleId(null); }}>
                 <X className="size-4" />
               </Button>
             </div>
@@ -258,7 +284,7 @@ export default function CreateRule() {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsBuilding(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => { setIsBuilding(false); setEditingRuleId(null); }}>Cancel</Button>
               <Button onClick={handleSaveRule} disabled={!name} className="gap-2">
                 <Save className="size-4" /> Save Rule
               </Button>
@@ -301,6 +327,9 @@ export default function CreateRule() {
                 <div className="flex items-center justify-end w-full sm:w-auto mt-2 sm:mt-0 shrink-0 gap-2">
                   <Button variant="outline" size="sm" className="w-28" onClick={() => handleToggle(rule.id!, rule.is_active)}>
                     {rule.is_active ? <><PowerOff className="size-3 mr-2" /> Disable</> : <><Power className="size-3 mr-2" /> Enable</>}
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted/50" onClick={() => handleEditClick(rule)}>
+                    <Edit2 className="size-4" />
                   </Button>
                   <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => handleDelete(rule.id!)}>
                     <Trash2 className="size-4" />
