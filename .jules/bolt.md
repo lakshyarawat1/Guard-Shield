@@ -7,3 +7,6 @@
 ## 2025-02-28 - Defeated useMemo by returning new array references
 **Learning:** Found a critical performance bottleneck in `Monitoring.tsx` and `AnalyticsDashboard.tsx` where `.filter()` and `.slice()` were used outside of `useMemo`, returning new array references on every render. This defeated downstream `useMemo` hooks (like `sortedAlerts`) that depended on these arrays, causing O(N log N) sorting operations to run synchronously on every render.
 **Action:** When deriving filtered or sliced arrays that are passed as dependencies to other hooks, always wrap the derivation in its own `useMemo` to ensure referential stability and prevent cascading re-renders.
+## 2025-02-28 - Avoid redundant string operations inside loops/filters
+**Learning:** In `ThreatFeed.tsx`, a `toLowerCase()` call was made repeatedly for the `searchTerm` variable inside the `.filter` loop callback. For arrays with hundreds or thousands of elements, this results in significant unnecessary work on the main thread.
+**Action:** Always pre-compute static values (like calling `toLowerCase()` on a search term) before entering a `.filter` or `.map` loop to ensure they are only calculated once.
