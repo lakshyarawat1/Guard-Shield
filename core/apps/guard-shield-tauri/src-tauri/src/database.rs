@@ -1,6 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
 use std::path::PathBuf;
+use std::collections::HashMap;
 use crate::packet_capturer::PacketData;
 use serde::{Deserialize, Serialize};
 use chrono::Local;
@@ -183,6 +184,14 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
         [],
     )?;
 
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    )?;
+
     // Add payload columns if they don't exist (non-destructive migration)
     let _ = conn.execute("ALTER TABLE packets ADD COLUMN payload TEXT", []);
     let _ = conn.execute("ALTER TABLE alerts ADD COLUMN payload TEXT", []);
@@ -308,7 +317,6 @@ pub fn insert_packet(
 
         if proto_match && src_ip_match && dst_ip_match && src_port_match && dst_port_match {
             impact_score = 10.0; // Custom rules are high priority
-            severity = "Critical".to_string();        
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
             info = rule.name.clone();
@@ -386,14 +394,6 @@ pub fn insert_packet(
                 }
 
                 impact_score = r.get("impact_score").and_then(|v| v.as_f64()).unwrap_or(5.0);
-                let raw_sev = r.get("severity").and_then(|v| v.as_str()).unwrap_or("High");
-                severity = match raw_sev.to_lowercase().as_str() {
-                    "critical" => "Critical".to_string(),
-                    "high" => "High".to_string(),
-                    "medium" => "Medium".to_string(),
-                    "low" => "Low".to_string(),
-                    _ => "Medium".to_string(),
-                };
                 port = dst_port.to_string();
                 protocol_str = proto_name.to_string();
                 info = msg.to_string();
@@ -409,25 +409,21 @@ pub fn insert_packet(
         
         if payload_lower.contains("union select ") || payload_lower.contains(" drop table ") {
             impact_score = 8.5;
-            severity = "High".to_string();
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
             info = "SQL Injection Attempt".to_string();
         } else if payload_lower.contains("<script>") || payload_lower.contains("javascript:") {
             impact_score = 7.0;
-            severity = "Medium".to_string();
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
             info = "Cross-Site Scripting (XSS) Attempt".to_string();
         } else if payload_lower.contains("../../../") || payload_lower.contains("..\\..\\..\\") || payload_lower.contains("/etc/passwd") {
             impact_score = 9.0;
-            severity = "Critical".to_string();
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
             info = "Directory Traversal Attempt".to_string();
         } else if payload_lower.contains("eval(") || payload_lower.contains("base64_decode(") {
             impact_score = 9.5;
-            severity = "Critical".to_string();
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
             info = "Suspicious Code Execution".to_string();
@@ -438,7 +434,6 @@ pub fn insert_packet(
     if impact_score == 0.0 && packet_direction == "Inbound" {
         if proto == "1" { 
             impact_score = 2.0;
-            severity = "Low".to_string();
             port = "N/A".to_string();
             protocol_str = "ICMP".to_string();
             info = "Possible ICMP Ping".to_string();
@@ -446,25 +441,21 @@ pub fn insert_packet(
             let dst_port = p.tcp_dstport.first().map(|s| s.as_str()).unwrap_or("");
             if dst_port == "23" {
                 impact_score = 8.5;
-                severity = "High".to_string();
                 port = "23".to_string();
                 protocol_str = "TCP".to_string();
                 info = "Telnet connection attempt (insecure)".to_string();
             } else if dst_port == "22" {
                 impact_score = 4.0;
-                severity = "Medium".to_string();
                 port = "22".to_string();
                 protocol_str = "TCP".to_string();
                 info = "SSH connection attempt".to_string();
             } else if dst_port == "3389" {
                 impact_score = 6.5;
-                severity = "High".to_string();
                 port = "3389".to_string();
                 protocol_str = "TCP".to_string();
                 info = "RDP connection attempt".to_string();
             } else if dst_port == "445" {
                 impact_score = 9.0;
-                severity = "Critical".to_string();
                 port = "445".to_string();
                 protocol_str = "TCP".to_string();
                 info = "SMB connection attempt".to_string();
@@ -761,6 +752,14 @@ pub fn toggle_custom_rule(conn: &Connection, id: i64, is_active: bool) -> Result
     Ok(())
 }
 
+pub fn update_custom_rule(conn: &Connection, id: i64, rule: &CustomRule) -> Result<()> {
+    conn.execute(
+        "UPDATE custom_rules SET name = ?1, description = ?2, action = ?3, src_ip = ?4, dst_ip = ?5, protocol = ?6, src_port = ?7, dst_port = ?8, direction = ?9 WHERE id = ?10",
+        params![rule.name, rule.description, rule.action, rule.src_ip, rule.dst_ip, rule.protocol, rule.src_port, rule.dst_port, rule.direction, id]
+    )?;
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SystemHealthStats {
     pub database_size_bytes: u64,
@@ -792,11 +791,33 @@ pub fn clear_database(conn: &Connection) -> Result<()> {
 }
 
 pub fn log_audit_event(conn: &Connection, log_type: &str, severity: &str, action: &str, details: &str) -> Result<()> {
-    let timestamp = Local::now().to_rfc3339();
+    let now = Local::now().to_rfc3339();
     conn.execute(
         "INSERT INTO audit_logs (timestamp, log_type, severity, action, details) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![timestamp, log_type, severity, action, details],
+        params![now, log_type, severity, action, details],
     )?;
+    Ok(())
+}
+
+pub fn get_settings(conn: &Connection) -> Result<HashMap<String, String>> {
+    let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+    let mut map = HashMap::new();
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        if let Ok((k, v)) = row {
+            map.insert(k, v);
+        }
+    }
+    Ok(map)
+}
+
+pub fn update_settings(conn: &Connection, updates: &HashMap<String, String>) -> Result<()> {
+    let mut stmt = conn.prepare("INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2")?;
+    for (k, v) in updates {
+        stmt.execute(params![k, v])?;
+    }
     Ok(())
 }
 

@@ -422,6 +422,25 @@ fn remove_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::
 }
 
 #[tauri::command]
+fn edit_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64, rule: database::CustomRule) -> Result<(), String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::update_custom_rule(&conn, id, &rule).map_err(|e| e.to_string())?;
+    let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "Edited Custom Rule", &format!("Rule ID: {}", id));
+    
+    if let Ok(rules) = database::get_custom_rules(&conn) {
+        if let Ok(mut cache) = state.custom_rules.write() {
+            *cache = rules.clone();
+            if let Ok(mut engine) = state.ips_engine.lock() {
+                let ips = state.blocked_ips.read().unwrap().clone();
+                let w_ips = state.whitelisted_ips.read().unwrap().clone();
+                let _ = engine.start(ips, rules, w_ips);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn toggle_custom_rule_state(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64, is_active: bool) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::toggle_custom_rule(&conn, id, is_active).map_err(|e| e.to_string())?;
@@ -487,29 +506,22 @@ fn start_packet_capture(
         }
     }
 
-    let app_clone = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut counter = 0u64;
-        let mut batch = Vec::new();
-        let mut last_emit = std::time::Instant::now();
+    let (ui_tx, ui_rx) = unbounded();
 
-        while let Ok(packet) = rx.recv() {
-            let mut packets_to_process = vec![packet];
-            
-            while let Ok(p) = rx.try_recv() {
-                packets_to_process.push(p);
-                if packets_to_process.len() >= 200 {
-                    break;
-                }
-            }
-
-            if let Some(db_state) = app_clone.try_state::<database::DatabaseState>() {
-                if let Some(app_state) = app_clone.try_state::<AppState>() {
-                    if let Ok(conn) = db_state.conn.lock() {
-                        let rules = app_state.custom_rules.read().unwrap();
-                        let geoip_lock = app_state.geoip_reader.read().unwrap();
-                        
-                        for p in &mut packets_to_process {
+    for _ in 0..4 {
+        let rx_clone = rx.clone();
+        let ui_tx_clone = ui_tx.clone();
+        let app_clone = app.clone();
+        
+        std::thread::spawn(move || {
+            let mut counter = 0u64;
+            while let Ok(mut p) = rx_clone.recv() {
+                if let Some(db_state) = app_clone.try_state::<database::DatabaseState>() {
+                    if let Some(app_state) = app_clone.try_state::<AppState>() {
+                        if let Ok(conn) = db_state.conn.lock() {
+                            let rules = app_state.custom_rules.read().unwrap();
+                            let geoip_lock = app_state.geoip_reader.read().unwrap();
+                            
                             // GeoIP Enrichment
                             if let Some(reader) = geoip_lock.as_ref() {
                                 if let Some(src_ip_str) = p.ip_src.first() {
@@ -546,7 +558,7 @@ fn start_packet_capture(
 
                             let enable_malware_sigs = app_state.malware_signatures_enabled.load(Ordering::Relaxed);
                             let threat_ips_lock = app_state.threat_ips.read().unwrap();
-                            if let Ok(Some(alert)) = database::insert_packet(&conn, p, &mut counter, &rules, enable_malware_sigs, &threat_ips_lock) {
+                            if let Ok(Some(alert)) = database::insert_packet(&conn, &mut p, &mut counter, &rules, enable_malware_sigs, &threat_ips_lock) {
                                 let _ = app_clone.emit("intrusion-alert", alert.clone());
                                 
                                 // Auto-Block logic for live traffic
@@ -567,12 +579,28 @@ fn start_packet_capture(
                         }
                     }
                 }
+                let _ = ui_tx_clone.send(p);
+            }
+        });
+    }
+
+    let app_clone_ui = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut batch = Vec::new();
+        let mut last_emit = std::time::Instant::now();
+
+        while let Ok(packet) = ui_rx.recv() {
+            batch.push(packet);
+            
+            while let Ok(p) = ui_rx.try_recv() {
+                batch.push(p);
+                if batch.len() >= 200 {
+                    break;
+                }
             }
 
-            batch.extend(packets_to_process);
-
             if batch.len() >= 50 || last_emit.elapsed().as_millis() >= 100 {
-                let _ = app_clone.emit("packets-batch", batch.clone());
+                let _ = app_clone_ui.emit("packets-batch", batch.clone());
                 batch.clear();
                 last_emit = std::time::Instant::now();
             }
@@ -600,6 +628,20 @@ fn get_audit_logs(
 fn clear_audit_logs(db_state: State<'_, database::DatabaseState>) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::clear_audit_logs(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn fetch_settings(db_state: State<'_, database::DatabaseState>) -> Result<std::collections::HashMap<String, String>, String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::get_settings(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_settings(db_state: State<'_, database::DatabaseState>, settings: std::collections::HashMap<String, String>) -> Result<(), String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::update_settings(&conn, &settings).map_err(|e| e.to_string())?;
+    let _ = database::log_audit_event(&conn, "SYSTEM", "INFO", "Updated Settings", "System settings were updated via the UI");
+    Ok(())
 }
 
 #[tauri::command]
@@ -655,6 +697,8 @@ fn get_threat_feeds(db_state: State<'_, database::DatabaseState>) -> Result<Vec<
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             let db_state = database::init_db(app_dir.clone()).expect("Failed to initialize database");
@@ -735,6 +779,7 @@ pub fn run() {
             sync_threat_feeds,
             get_threat_feeds,
             add_custom_rule,
+            edit_custom_rule,
             fetch_custom_rules,
             remove_custom_rule,
             toggle_custom_rule_state,
@@ -751,12 +796,33 @@ pub fn run() {
             trigger_mock_alert,
             get_audit_logs,
             clear_audit_logs,
+            fetch_settings,
+            save_settings,
             toggle_auto_block,
             get_malware_settings,
             set_malware_setting,
+            save_snapshot,
+            restore_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn save_snapshot(app: tauri::AppHandle, destination: String) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let db_path = app_dir.join("guard_shield.db");
+    std::fs::copy(&db_path, &destination).map_err(|e| format!("Failed to save snapshot: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn restore_snapshot(app: tauri::AppHandle, source: String) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let db_path = app_dir.join("guard_shield.db");
+    std::fs::copy(&source, &db_path).map_err(|e| format!("Failed to restore snapshot: {}", e))?;
+    app.restart();
+    Ok(())
 }
 
 #[cfg(test)]
