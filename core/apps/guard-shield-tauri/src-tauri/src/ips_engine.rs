@@ -1,4 +1,5 @@
 use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+use std::net::IpAddr;
 use windivert::{WinDivert, prelude::WinDivertFlags};
 use crate::database::CustomRule;
 
@@ -39,7 +40,11 @@ impl IpsEngine {
         
         // 1. IP Auto-blocks
         for ip in blocked_ips {
-            filters.push(format!("(ip.SrcAddr == {} or ip.DstAddr == {})", ip, ip));
+            if let Ok(parsed_ip) = ip.parse::<IpAddr>() {
+                filters.push(format!("(ip.SrcAddr == '{}' or ip.DstAddr == '{}')", parsed_ip, parsed_ip));
+            } else {
+                eprintln!("Invalid blocked IP skipped: {}", ip);
+            }
         }
 
         // 2. Custom Drop Rules
@@ -52,45 +57,80 @@ impl IpsEngine {
             
             // Protocol matching
             if rule.protocol != "Any" {
-                rule_filters.push(rule.protocol.to_lowercase());
+                let proto = rule.protocol.to_lowercase();
+                if proto == "tcp" || proto == "udp" || proto == "icmp" {
+                    rule_filters.push(proto);
+                } else {
+                    eprintln!("Invalid protocol skipped: {}", rule.protocol);
+                    continue; // Skip the rule if protocol is invalid
+                }
             }
 
             // IP matching
+            let mut skip_rule = false;
             if let Some(src) = &rule.src_ip {
                 if !src.is_empty() {
-                    rule_filters.push(format!("ip.SrcAddr == {}", src));
+                    if let Ok(parsed_src) = src.parse::<IpAddr>() {
+                        rule_filters.push(format!("ip.SrcAddr == '{}'", parsed_src));
+                    } else {
+                        eprintln!("Invalid source IP skipped: {}", src);
+                        skip_rule = true;
+                    }
                 }
             }
             if let Some(dst) = &rule.dst_ip {
                 if !dst.is_empty() {
-                    rule_filters.push(format!("ip.DstAddr == {}", dst));
+                    if let Ok(parsed_dst) = dst.parse::<IpAddr>() {
+                        rule_filters.push(format!("ip.DstAddr == '{}'", parsed_dst));
+                    } else {
+                        eprintln!("Invalid destination IP skipped: {}", dst);
+                        skip_rule = true;
+                    }
                 }
+            }
+
+            if skip_rule {
+                continue;
             }
 
             // Port matching (requires tcp or udp in the rule filter)
             if let Some(src_port) = &rule.src_port {
                 if !src_port.is_empty() {
-                    if rule.protocol == "TCP" {
-                        rule_filters.push(format!("tcp.SrcPort == {}", src_port));
-                    } else if rule.protocol == "UDP" {
-                        rule_filters.push(format!("udp.SrcPort == {}", src_port));
-                    } else if rule.protocol == "Any" {
-                        // If protocol is Any, but port is specified, WinDivert needs us to specify it's a TCP or UDP packet.
-                        rule_filters.push(format!("((tcp and tcp.SrcPort == {}) or (udp and udp.SrcPort == {}))", src_port, src_port));
+                    if let Ok(parsed_port) = src_port.parse::<u16>() {
+                        if rule.protocol == "TCP" {
+                            rule_filters.push(format!("tcp.SrcPort == {}", parsed_port));
+                        } else if rule.protocol == "UDP" {
+                            rule_filters.push(format!("udp.SrcPort == {}", parsed_port));
+                        } else if rule.protocol == "Any" {
+                            // If protocol is Any, but port is specified, WinDivert needs us to specify it's a TCP or UDP packet.
+                            rule_filters.push(format!("((tcp and tcp.SrcPort == {}) or (udp and udp.SrcPort == {}))", parsed_port, parsed_port));
+                        }
+                    } else {
+                        eprintln!("Invalid source port skipped: {}", src_port);
+                        skip_rule = true;
                     }
                 }
             }
             
             if let Some(dst_port) = &rule.dst_port {
                 if !dst_port.is_empty() {
-                    if rule.protocol == "TCP" {
-                        rule_filters.push(format!("tcp.DstPort == {}", dst_port));
-                    } else if rule.protocol == "UDP" {
-                        rule_filters.push(format!("udp.DstPort == {}", dst_port));
-                    } else if rule.protocol == "Any" {
-                        rule_filters.push(format!("((tcp and tcp.DstPort == {}) or (udp and udp.DstPort == {}))", dst_port, dst_port));
+                    if let Ok(parsed_port) = dst_port.parse::<u16>() {
+                        if rule.protocol == "TCP" {
+                            rule_filters.push(format!("tcp.DstPort == {}", parsed_port));
+                        } else if rule.protocol == "UDP" {
+                            rule_filters.push(format!("udp.DstPort == {}", parsed_port));
+                        } else if rule.protocol == "Any" {
+                            rule_filters.push(format!("((tcp and tcp.DstPort == {}) or (udp and udp.DstPort == {}))", parsed_port, parsed_port));
+                        }
+                    } else {
+                        eprintln!("Invalid destination port skipped: {}", dst_port);
+                        skip_rule = true;
                     }
                 }
+            }
+
+            if skip_rule {
+                continue;
             }
 
             if !rule_filters.is_empty() {
@@ -110,10 +150,16 @@ impl IpsEngine {
         if !whitelisted_ips.is_empty() {
             let mut whitelist_filters = Vec::new();
             for w_ip in whitelisted_ips {
-                whitelist_filters.push(format!("(ip.SrcAddr == '{}' or ip.DstAddr == '{}')", w_ip, w_ip));
+                if let Ok(parsed_ip) = w_ip.parse::<IpAddr>() {
+                    whitelist_filters.push(format!("(ip.SrcAddr == '{}' or ip.DstAddr == '{}')", parsed_ip, parsed_ip));
+                } else {
+                    eprintln!("Invalid whitelist IP skipped: {}", w_ip);
+                }
             }
-            let whitelist_str = whitelist_filters.join(" or ");
-            filter_str = format!("({}) and !({})", filter_str, whitelist_str);
+            if !whitelist_filters.is_empty() {
+                let whitelist_str = whitelist_filters.join(" or ");
+                filter_str = format!("({}) and !({})", filter_str, whitelist_str);
+            }
         }
 
         std::thread::spawn(move || {
