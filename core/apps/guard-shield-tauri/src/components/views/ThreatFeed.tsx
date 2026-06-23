@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Header } from "./Header";
 import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
@@ -37,12 +37,16 @@ const ThreatFeed = () => {
       .catch((e) => console.error("Failed to load threat feeds:", e));
   }, []);
 
-  const filteredIndicators = indicators.filter(
-    (ioc) =>
-      ioc.indicator.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ioc.provider.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ioc.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ⚡ Bolt Optimization: Memoize filtered indicators to prevent unnecessary O(n) filtering on every render
+  const filteredIndicators = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    return indicators.filter(
+      (ioc) =>
+        ioc.indicator.toLowerCase().includes(lowerSearch) ||
+        ioc.provider.toLowerCase().includes(lowerSearch) ||
+        ioc.category.toLowerCase().includes(lowerSearch)
+    );
+  }, [indicators, searchTerm]);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
