@@ -17,6 +17,48 @@ import { TableVirtuoso } from "react-virtuoso";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { HexViewer } from "./HexViewer";
 
+// Virtualized table components defined outside render to prevent unmounting/remounting
+const VirtuosoTable = (props: any) => <table {...props} className="w-full caption-bottom text-sm" />;
+const VirtuosoTableHead = React.forwardRef((props, ref) => <thead {...props} ref={ref as any} className="bg-muted/40 sticky top-0 backdrop-blur-sm z-10 [&_tr]:border-b" />);
+const VirtuosoTableRow = (props: any) => <tr {...props} className="text-sm font-medium transition-colors hover:bg-muted/60 data-[state=selected]:bg-muted border-b" />;
+const VirtuosoTableBody = React.forwardRef((props, ref) => <tbody {...props} ref={ref as any} className="[&_tr:last-child]:border-0" />);
+const VirtuosoEmptyPlaceholder = ({ context }: any) => (
+  <tbody>
+    {context.error ? (
+      <tr>
+        <td colSpan={7} className="h-[24rem] text-center">
+          <div className="flex flex-col items-center justify-center text-destructive space-y-2">
+            <span className="text-4xl">⚠️</span>
+            <p className="font-bold text-lg">Packet Capture Failed</p>
+            <p className="text-sm max-w-md">{context.error}</p>
+            <p className="text-xs text-muted-foreground mt-4">Make sure to run the application as Administrator.</p>
+          </div>
+        </td>
+      </tr>
+    ) : context.packetsLength === 0 ? (
+      <tr>
+        <td colSpan={7} className="h-[24rem] text-center">
+          <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
+            <span className="text-4xl animate-pulse">📡</span>
+            <p className="font-bold text-lg">Waiting for packets...</p>
+            <p className="text-sm">Listening on active network interface.</p>
+          </div>
+        </td>
+      </tr>
+    ) : context.filteredPacketsLength === 0 ? (
+      <tr>
+        <td colSpan={7} className="h-[24rem] text-center">
+          <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
+            <span className="text-4xl">🔍</span>
+            <p className="font-bold text-lg">No matches found</p>
+            <p className="text-sm">Try adjusting your filters.</p>
+          </div>
+        </td>
+      </tr>
+    ) : null}
+  </tbody>
+);
+
 const getProtocolColor = (proto: string | undefined) => {
   if (!proto) return "bg-gray-500";
   const num = Number(proto);
@@ -229,47 +271,13 @@ export default function LiveTraffic() {
                 <TableVirtuoso
                   data={sortedPackets}
                   className="flex-1 w-full"
+                  context={{ error, packetsLength: packets.length, filteredPacketsLength: filteredPackets.length }}
                   components={{
-                    Table: (props) => <table {...props} className="w-full caption-bottom text-sm" />,
-                    TableHead: React.forwardRef((props, ref) => <thead {...props} ref={ref as any} className="bg-muted/40 sticky top-0 backdrop-blur-sm z-10 [&_tr]:border-b" />),
-                    TableRow: (props) => <tr {...props} className="text-sm font-medium transition-colors hover:bg-muted/60 data-[state=selected]:bg-muted border-b" />,
-                    TableBody: React.forwardRef((props, ref) => <tbody {...props} ref={ref as any} className="[&_tr:last-child]:border-0" />),
-                    EmptyPlaceholder: () => (
-                      <tbody>
-                        {error ? (
-                          <tr>
-                            <td colSpan={7} className="h-[24rem] text-center">
-                              <div className="flex flex-col items-center justify-center text-destructive space-y-2">
-                                <span className="text-4xl">⚠️</span>
-                                <p className="font-bold text-lg">Packet Capture Failed</p>
-                                <p className="text-sm max-w-md">{error}</p>
-                                <p className="text-xs text-muted-foreground mt-4">Make sure to run the application as Administrator.</p>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : packets.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="h-[24rem] text-center">
-                              <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
-                                <span className="text-4xl animate-pulse">📡</span>
-                                <p className="font-bold text-lg">Waiting for packets...</p>
-                                <p className="text-sm">Listening on active network interface.</p>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : filteredPackets.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="h-[24rem] text-center">
-                              <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
-                                <span className="text-4xl">🔍</span>
-                                <p className="font-bold text-lg">No matches found</p>
-                                <p className="text-sm">Try adjusting your filters.</p>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    )
+                    Table: VirtuosoTable,
+                    TableHead: VirtuosoTableHead,
+                    TableRow: VirtuosoTableRow,
+                    TableBody: VirtuosoTableBody,
+                    EmptyPlaceholder: VirtuosoEmptyPlaceholder,
                   }}
                   fixedHeaderContent={() => (
                     <tr>
