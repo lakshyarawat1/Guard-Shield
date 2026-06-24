@@ -10,3 +10,6 @@
 ## 2025-02-28 - Avoid redundant string operations inside loops/filters
 **Learning:** In `ThreatFeed.tsx`, a `toLowerCase()` call was made repeatedly for the `searchTerm` variable inside the `.filter` loop callback. For arrays with hundreds or thousands of elements, this results in significant unnecessary work on the main thread.
 **Action:** Always pre-compute static values (like calling `toLowerCase()` on a search term) before entering a `.filter` or `.map` loop to ensure they are only calculated once.
+## 2025-06-24 - Inline Component Definitions inside Virtualized Lists cause Constant Remounting
+**Learning:** In `LiveTraffic.tsx`, defining sub-components (Table, TableRow, TableBody, EmptyPlaceholder) inline within the `components` prop of `TableVirtuoso` causes React to see them as new component types on every render. Given the frequent updates from live packet capture, this leads to continuous unmounting and remounting of the entire DOM subtree, drastically reducing performance and causing high CPU usage.
+**Action:** Always define components passed to virtualized lists (or any component accepting component props) at the module level outside the render loop. If they need state or props from the parent, pass it via the provided `context` prop.
