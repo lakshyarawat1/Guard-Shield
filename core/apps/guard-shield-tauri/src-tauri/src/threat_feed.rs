@@ -15,7 +15,8 @@ pub struct ThreatIndicator {
 }
 
 pub async fn fetch_cins_army() -> Result<Vec<ThreatIndicator>, String> {
-    let url = "http://cinsscore.com/list/ci-badguys.txt";
+    // 🛡️ Sentinel: Use HTTPS to prevent MITM attacks tampering with the threat feed.
+    let url = "https://cinsscore.com/list/ci-badguys.txt";
     let resp = reqwest::get(url).await.map_err(|e| e.to_string())?;
     let text = resp.text().await.map_err(|e| e.to_string())?;
     
