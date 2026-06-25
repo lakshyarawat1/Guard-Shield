@@ -146,6 +146,12 @@ fn clear_database(db_state: State<'_, database::DatabaseState>) -> Result<(), St
 }
 
 #[tauri::command]
+fn broadcast_ui_settings(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Emitter;
+    app.emit("ui-settings-changed", ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn stop_packet_capture(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>) -> Result<(), String> {
     let mut flag_lock = state.capture_flag.lock().unwrap();
     if let Some(old_flag) = flag_lock.take() {
@@ -798,11 +804,13 @@ pub fn run() {
             clear_audit_logs,
             fetch_settings,
             save_settings,
+            broadcast_ui_settings,
             toggle_auto_block,
             get_malware_settings,
             set_malware_setting,
             save_snapshot,
             restore_snapshot,
+            get_pdf_report_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -823,6 +831,15 @@ fn restore_snapshot(app: tauri::AppHandle, source: String) -> Result<(), String>
     std::fs::copy(&source, &db_path).map_err(|e| format!("Failed to restore snapshot: {}", e))?;
     app.restart();
     Ok(())
+}
+
+#[tauri::command]
+fn get_pdf_report_data(
+    db_state: tauri::State<'_, database::DatabaseState>,
+    time_range_hours: u32,
+) -> Result<database::ReportData, String> {
+    let conn = db_state.conn.lock().unwrap();
+    database::get_pdf_report_data(&conn, time_range_hours).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

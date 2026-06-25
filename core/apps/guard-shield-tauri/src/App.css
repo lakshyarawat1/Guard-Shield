@@ -127,6 +127,12 @@
 }
 
 @layer base {
+  .reduce-motion * {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }

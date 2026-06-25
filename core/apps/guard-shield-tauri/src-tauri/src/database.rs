@@ -72,6 +72,27 @@ pub struct TelemetryStats {
     pub last_24h_alerts: i64,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReportData {
+    pub total_alerts: i64,
+    pub total_packets: i64,
+    pub top_src_ips: Vec<TopIpData>,
+    pub top_rules: Vec<TopRuleData>,
+    pub severity_counts: HashMap<String, i64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TopIpData {
+    pub ip: String,
+    pub count: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TopRuleData {
+    pub rule_name: String,
+    pub count: i64,
+}
+
 pub struct DatabaseState {
     pub conn: Mutex<Connection>,
 }
@@ -929,4 +950,63 @@ pub fn get_all_threat_indicators(conn: &Connection) -> Result<Vec<crate::threat_
         inds.push(row?);
     }
     Ok(inds)
+}
+
+pub fn get_pdf_report_data(conn: &Connection, time_range_hours: u32) -> Result<ReportData> {
+    let total_alerts: i64;
+    let total_packets: i64;
+    
+    let time_filter = if time_range_hours > 0 {
+        let cutoff = (chrono::Local::now() - chrono::Duration::hours(time_range_hours as i64))
+            .format("%Y-%m-%dT%H:%M:%S")
+            .to_string();
+        format!("WHERE timestamp >= '{}'", cutoff)
+    } else {
+        String::new()
+    };
+    
+    total_alerts = conn.query_row(
+        &format!("SELECT count(*) FROM alerts {}", time_filter),
+        [],
+        |row| row.get(0)
+    ).unwrap_or(0);
+    
+    total_packets = conn.query_row("SELECT count(*) FROM packets", [], |row| row.get(0)).unwrap_or(0);
+
+    let mut severity_counts = std::collections::HashMap::new();
+    let mut stmt = conn.prepare(&format!("SELECT severity, COUNT(*) FROM alerts {} GROUP BY severity", time_filter))?;
+    let _ = stmt.query_map([], |row| {
+        let sev: String = row.get(0)?;
+        let count: i64 = row.get(1)?;
+        severity_counts.insert(sev, count);
+        Ok(())
+    })?.for_each(|_| {});
+
+    let mut top_src_ips = Vec::new();
+    let mut stmt = conn.prepare(&format!("SELECT src_ip, COUNT(*) as c FROM alerts {} GROUP BY src_ip ORDER BY c DESC LIMIT 10", time_filter))?;
+    let _ = stmt.query_map([], |row| {
+        top_src_ips.push(TopIpData {
+            ip: row.get(0)?,
+            count: row.get(1)?,
+        });
+        Ok(())
+    })?.for_each(|_| {});
+
+    let mut top_rules = Vec::new();
+    let mut stmt = conn.prepare(&format!("SELECT info, COUNT(*) as c FROM alerts {} GROUP BY info ORDER BY c DESC LIMIT 5", time_filter))?;
+    let _ = stmt.query_map([], |row| {
+        top_rules.push(TopRuleData {
+            rule_name: row.get(0)?,
+            count: row.get(1)?,
+        });
+        Ok(())
+    })?.for_each(|_| {});
+
+    Ok(ReportData {
+        total_alerts,
+        total_packets,
+        top_src_ips,
+        top_rules,
+        severity_counts,
+    })
 }

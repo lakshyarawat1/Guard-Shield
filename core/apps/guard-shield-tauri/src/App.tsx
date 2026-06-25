@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
+import { listen } from "@tauri-apps/api/event";
 import AnalyticsDashboard from "./components/views/AnalyticsDashboard";
 import LiveTraffic from "./components/views/LiveTraffic";
 import NetworkingSettings from "./components/views/NetworkingSettings";
@@ -24,6 +25,18 @@ function App() {
   useEffect(() => {
     const savedSize = localStorage.getItem("guard_shield_font_size") || "medium";
     applyFontSize(savedSize);
+
+    let unlistenFn: (() => void) | undefined;
+    const setupListener = async () => {
+      unlistenFn = await listen("ui-settings-changed", () => {
+        window.location.reload();
+      });
+    };
+    setupListener();
+
+    return () => {
+      if (unlistenFn) unlistenFn();
+    };
   }, []);
 
   return (

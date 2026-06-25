@@ -3,8 +3,22 @@ import { invoke } from "@tauri-apps/api/core";
 import { Settings, Shield, HardDrive, Cpu, Save } from "lucide-react";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
+import { useTheme } from "../ThemeProvider";
+import { Paintbrush } from "lucide-react";
+import { Switch } from "../ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 export default function GeneralSettings() {
+  const { theme, setTheme, accentColor, setAccentColor } = useTheme();
+  const [fontSize, setFontSize] = useState(() => localStorage.getItem("guard_shield_font_size") || "medium");
+  const [compactMode, setCompactMode] = useState(() => localStorage.getItem("guard_shield_compact_mode") === "true");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("guard_shield_sidebar_collapsed") === "true");
+  const [smoothCharts, setSmoothCharts] = useState(() => localStorage.getItem("guard_shield_chart_smooth") !== "false");
+  const [filledCharts, setFilledCharts] = useState(() => localStorage.getItem("guard_shield_chart_filled") !== "false");
+  const [reduceMotion, setReduceMotion] = useState(() => localStorage.getItem("guard_shield_reduce_motion") === "true");
+  const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem("guard_shield_settings_tab") || "core");
+
   const [isClearing, setIsClearing] = useState(false);
   const [settings, setSettings] = useState<Record<string, string>>({
     realTimeProtection: "true",
@@ -77,7 +91,14 @@ export default function GeneralSettings() {
           </Button>
         </div>
 
-        <div className="space-y-8">
+        <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); sessionStorage.setItem("guard_shield_settings_tab", val); }} className="flex flex-col md:flex-row w-full gap-8 h-full">
+          <TabsList className="flex flex-col w-full md:w-64 justify-start border-r border-b-0 rounded-none bg-transparent p-0 pr-4 gap-2 min-h-[calc(100vh-12rem)] items-start">
+            <TabsTrigger value="core" className="w-full justify-start data-[state=active]:bg-muted data-[state=active]:shadow-none data-[state=active]:border-r-2 data-[state=active]:border-primary rounded-none px-4 py-3 text-left flex-none h-auto">Core Settings</TabsTrigger>
+            <TabsTrigger value="preferences" className="w-full justify-start data-[state=active]:bg-muted data-[state=active]:shadow-none data-[state=active]:border-r-2 data-[state=active]:border-primary rounded-none px-4 py-3 text-left flex-none h-auto">Preferences (UI)</TabsTrigger>
+          </TabsList>
+
+          <div className="flex-1 w-full min-w-0">
+            <TabsContent value="core" className="space-y-8 outline-none mt-0">
           {/* Section 1 */}
           <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -92,12 +113,10 @@ export default function GeneralSettings() {
                   <p className="font-medium">Real-Time Protection</p>
                   <p className="text-sm text-muted-foreground">Actively scan incoming packets and block known threats automatically.</p>
                 </div>
-                <div 
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.realTimeProtection === "true" ? 'bg-primary' : 'bg-muted'}`}
-                  onClick={() => toggleSetting("realTimeProtection")}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.realTimeProtection === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
+                <Switch 
+                  checked={settings.realTimeProtection === "true"} 
+                  onCheckedChange={() => toggleSetting("realTimeProtection")} 
+                />
               </div>
 
               <div className="flex items-center justify-between">
@@ -105,12 +124,10 @@ export default function GeneralSettings() {
                   <p className="font-medium">Heuristics Engine</p>
                   <p className="text-sm text-muted-foreground">Use AI to detect unusual behavior anomalies that aren't in the signature database.</p>
                 </div>
-                <div 
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.heuristicsEngine === "true" ? 'bg-primary' : 'bg-muted'}`}
-                  onClick={() => toggleSetting("heuristicsEngine")}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.heuristicsEngine === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
+                <Switch 
+                  checked={settings.heuristicsEngine === "true"} 
+                  onCheckedChange={() => toggleSetting("heuristicsEngine")} 
+                />
               </div>
 
               <div className="flex items-center justify-between">
@@ -118,12 +135,10 @@ export default function GeneralSettings() {
                   <p className="font-medium">Critical / High Alerts Only</p>
                   <p className="text-sm text-muted-foreground">Only show notifications for Critical or High severity threats. Mutes Low/Medium alerts.</p>
                 </div>
-                <div 
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.notificationsCriticalOnly === "true" ? 'bg-primary' : 'bg-muted'}`}
-                  onClick={() => toggleSetting("notificationsCriticalOnly")}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.notificationsCriticalOnly === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
+                <Switch 
+                  checked={settings.notificationsCriticalOnly === "true"} 
+                  onCheckedChange={() => toggleSetting("notificationsCriticalOnly")} 
+                />
               </div>
             </div>
           </div>
@@ -142,12 +157,10 @@ export default function GeneralSettings() {
                   <p className="font-medium">Run on Startup</p>
                   <p className="text-sm text-muted-foreground">Launch Guard Shield in the background when your system starts.</p>
                 </div>
-                <div 
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.runOnStartup === "true" ? 'bg-primary' : 'bg-muted'}`}
-                  onClick={() => toggleSetting("runOnStartup")}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.runOnStartup === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
+                <Switch 
+                  checked={settings.runOnStartup === "true"} 
+                  onCheckedChange={() => toggleSetting("runOnStartup")} 
+                />
               </div>
 
               <div className="flex items-center justify-between">
@@ -155,12 +168,10 @@ export default function GeneralSettings() {
                   <p className="font-medium">Hardware Acceleration</p>
                   <p className="text-sm text-muted-foreground">Offload packet inspection to available GPU compute for lower CPU overhead.</p>
                 </div>
-                <div 
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.hardwareAcceleration === "true" ? 'bg-primary' : 'bg-muted'}`}
-                  onClick={() => toggleSetting("hardwareAcceleration")}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.hardwareAcceleration === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
+                <Switch 
+                  checked={settings.hardwareAcceleration === "true"} 
+                  onCheckedChange={() => toggleSetting("hardwareAcceleration")} 
+                />
               </div>
             </div>
           </div>
@@ -179,12 +190,10 @@ export default function GeneralSettings() {
                   <p className="font-medium">Send Anonymous Usage Data</p>
                   <p className="text-sm text-muted-foreground">Help us improve by sending non-identifiable crash reports and metrics.</p>
                 </div>
-                <div 
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors ${settings.sendTelemetry === "true" ? 'bg-primary' : 'bg-muted'}`}
-                  onClick={() => toggleSetting("sendTelemetry")}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.sendTelemetry === "true" ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
+                <Switch 
+                  checked={settings.sendTelemetry === "true"} 
+                  onCheckedChange={() => toggleSetting("sendTelemetry")} 
+                />
               </div>
               
               <div className="pt-2">
@@ -200,7 +209,168 @@ export default function GeneralSettings() {
             </div>
           </div>
           
-        </div>
+          </TabsContent>
+
+          <TabsContent value="preferences" className="space-y-8 outline-none mt-0">
+            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Paintbrush className="size-5 text-primary" />
+                <h3 className="font-semibold text-lg">UI Customization</h3>
+              </div>
+              <Separator className="mb-4" />
+              
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Theme</p>
+                    <p className="text-sm text-muted-foreground">Select the application's visual theme.</p>
+                  </div>
+                  <Select
+                    value={theme}
+                    onValueChange={async (val) => {
+                      setTheme(val as any);
+                      await invoke("broadcast_ui_settings");
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Theme" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="system">System Default</SelectItem>
+                      <SelectItem value="light">Light</SelectItem>
+                      <SelectItem value="dark">Dark</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Accent Color</p>
+                    <p className="text-sm text-muted-foreground">Select the primary accent color.</p>
+                  </div>
+                  <Select
+                    value={accentColor}
+                    onValueChange={async (val) => {
+                      setAccentColor(val as any);
+                      await invoke("broadcast_ui_settings");
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Accent Color" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default Slate</SelectItem>
+                      <SelectItem value="cyber-green">Cyber Green</SelectItem>
+                      <SelectItem value="crimson-red">Crimson Red</SelectItem>
+                      <SelectItem value="neon-purple">Neon Purple</SelectItem>
+                      <SelectItem value="amber">Amber Warning</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Font Size</p>
+                    <p className="text-sm text-muted-foreground">Adjust the text scaling across the entire application.</p>
+                  </div>
+                  <Select
+                    value={fontSize}
+                    onValueChange={async (val) => {
+                      setFontSize(val);
+                      localStorage.setItem("guard_shield_font_size", val);
+                      await invoke("broadcast_ui_settings");
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Font Size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Small</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="large">Large</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Compact Mode</p>
+                    <p className="text-sm text-muted-foreground">Use a denser layout for data tables and logs.</p>
+                  </div>
+                  <Switch 
+                    checked={compactMode} 
+                    onCheckedChange={async (checked) => {
+                      setCompactMode(checked);
+                      localStorage.setItem("guard_shield_compact_mode", checked ? "true" : "false");
+                      await invoke("broadcast_ui_settings");
+                    }} 
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Sidebar Collapse Mode</p>
+                    <p className="text-sm text-muted-foreground">Collapse the main navigation sidebar to save screen space.</p>
+                  </div>
+                  <Switch 
+                    checked={sidebarCollapsed} 
+                    onCheckedChange={async (checked) => {
+                      setSidebarCollapsed(checked);
+                      localStorage.setItem("guard_shield_sidebar_collapsed", checked ? "true" : "false");
+                      await invoke("broadcast_ui_settings");
+                    }} 
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Smooth Charts</p>
+                    <p className="text-sm text-muted-foreground">Use bezier curves instead of sharp linear lines for analytics.</p>
+                  </div>
+                  <Switch 
+                    checked={smoothCharts} 
+                    onCheckedChange={async (checked) => {
+                      setSmoothCharts(checked);
+                      localStorage.setItem("guard_shield_chart_smooth", checked ? "true" : "false");
+                      await invoke("broadcast_ui_settings");
+                    }} 
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Filled Charts</p>
+                    <p className="text-sm text-muted-foreground">Fill the area under the analytics charts.</p>
+                  </div>
+                  <Switch 
+                    checked={filledCharts} 
+                    onCheckedChange={async (checked) => {
+                      setFilledCharts(checked);
+                      localStorage.setItem("guard_shield_chart_filled", checked ? "true" : "false");
+                      await invoke("broadcast_ui_settings");
+                    }} 
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Reduce Motion</p>
+                    <p className="text-sm text-muted-foreground">Disable UI micro-animations and transitions for maximum performance.</p>
+                  </div>
+                  <Switch 
+                    checked={reduceMotion} 
+                    onCheckedChange={async (checked) => {
+                      setReduceMotion(checked);
+                      localStorage.setItem("guard_shield_reduce_motion", checked ? "true" : "false");
+                      await invoke("broadcast_ui_settings");
+                    }} 
+                  />
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+          </div>
+        </Tabs>
       </div>
     </div>
   );

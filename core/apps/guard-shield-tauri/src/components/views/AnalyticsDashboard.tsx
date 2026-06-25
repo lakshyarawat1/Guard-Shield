@@ -38,8 +38,11 @@ const getChartColors = (theme: "dark" | "light") => ({
 });
 
 export default function AnalyticsDashboard() {
-  const { resolvedTheme } = useTheme();
+  const { theme, resolvedTheme } = useTheme();
   const colors = getChartColors(resolvedTheme);
+  
+  const isSmooth = localStorage.getItem("guard_shield_chart_smooth") !== "false";
+  const isFilled = localStorage.getItem("guard_shield_chart_filled") !== "false";
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
   const [timeRangeStr, setTimeRangeStr] = useState<string>("5m");
@@ -52,11 +55,12 @@ export default function AnalyticsDashboard() {
     return 60 * 1000;
   }, [timeRangeStr]);
 
-  const [trafficHistory, setTrafficHistory] = useState<{ time: number, pkts: number }[]>(() => {
+  const [trafficHistory, setTrafficHistory] = useState<{ time: number, pkts: number, alerts: number }[]>(() => {
     const now = Date.now();
     return Array.from({ length: 60 }).map((_, i) => ({
       time: now - (59 - i) * 1000,
-      pkts: 0
+      pkts: 0,
+      alerts: 0
     }));
   });
 
@@ -75,10 +79,12 @@ export default function AnalyticsDashboard() {
 
     let unlistenFn: (() => void) | undefined;
     let unlistenPackets: (() => void) | undefined;
+    let alertCountInSec = 0;
     let packetCountInSec = 0;
 
     const setupListener = async () => {
       unlistenFn = await listen<AlertData>("intrusion-alert", (event) => {
+        alertCountInSec += 1;
         setAlerts((prev) => [event.payload, ...prev].slice(0, 1000));
         setStats((prev) => ({
           total_alerts: prev.total_alerts + 1,
@@ -94,8 +100,9 @@ export default function AnalyticsDashboard() {
     const interval = setInterval(() => {
       const now = Date.now();
       setTrafficHistory(prev => {
-        const next = [...prev, { time: now, pkts: packetCountInSec }];
+        const next = [...prev, { time: now, pkts: packetCountInSec, alerts: alertCountInSec }];
         packetCountInSec = 0;
+        alertCountInSec = 0;
         // Keep up to 1 hour (3600 points) to prevent infinite memory growth
         if (next.length > 3600) {
           return next.slice(next.length - 3600);
@@ -484,7 +491,7 @@ export default function AnalyticsDashboard() {
             <div className="col-span-2 p-5 rounded-xl border bg-card shadow-sm flex flex-col">
               <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
                 <Activity className="size-5 text-chart-2" />
-                Live Traffic Volume ({timeRangeStr === '1m' ? 'Last 60s' : timeRangeStr === '5m' ? 'Last 5m' : timeRangeStr === '15m' ? 'Last 15m' : timeRangeStr === '60m' ? 'Last 1h' : 'Last 24h'})
+                Live Traffic vs. Threats Volume ({timeRangeStr === '1m' ? 'Last 60s' : timeRangeStr === '5m' ? 'Last 5m' : timeRangeStr === '15m' ? 'Last 15m' : timeRangeStr === '60m' ? 'Last 1h' : 'Last 24h'})
               </h3>
               <div className="flex-1 min-h-[200px]">
                 <ReactECharts
@@ -511,15 +518,34 @@ export default function AnalyticsDashboard() {
                       {
                         name: 'Packets/sec',
                         type: 'line',
+                        smooth: isSmooth ? 0.4 : false,
                         symbol: 'none',
                         sampling: 'lttb',
-                        areaStyle: {
-                          color: colors.chart2,
-                          opacity: 0.3
-                        },
+                        ...(isFilled ? {
+                          areaStyle: {
+                            color: colors.chart2,
+                            opacity: 0.3
+                          }
+                        } : {}),
                         itemStyle: { color: colors.chart2 },
                         lineStyle: { width: 2 },
                         data: trafficHistory.map(d => [d.time, d.pkts])
+                      },
+                      {
+                        name: 'Threats/sec',
+                        type: 'line',
+                        smooth: isSmooth ? 0.4 : false,
+                        symbol: 'none',
+                        sampling: 'lttb',
+                        ...(isFilled ? {
+                          areaStyle: {
+                            color: colors.destructive,
+                            opacity: 0.3
+                          }
+                        } : {}),
+                        itemStyle: { color: colors.destructive },
+                        lineStyle: { width: 2 },
+                        data: trafficHistory.map(d => [d.time, d.alerts])
                       }
                     ]
                   }}

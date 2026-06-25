@@ -15,7 +15,9 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { writeTextFile, writeFile } from "@tauri-apps/plugin-fs";
+import { pdf } from '@react-pdf/renderer';
+import { SecurityReport, ReportData } from '../reports/SecurityReport';
 import { useState, useEffect } from "react";
 import { useTheme } from "../ThemeProvider";
 import { useNavigate } from "react-router-dom";
@@ -176,6 +178,41 @@ const Infobar = () => {
     }
   };
 
+  const handleGeneratePDF = async () => {
+    try {
+      const filePath = await save({
+        defaultPath: `guard_shield_report_${new Date().toISOString().split('T')[0]}.pdf`,
+        filters: [{ name: "PDF Document", extensions: ["pdf"] }]
+      });
+
+      if (!filePath) return;
+
+      toast.loading("Generating PDF report...", { id: "pdf-gen" });
+
+      const data: ReportData = await invoke("get_pdf_report_data", { timeRangeHours: 24 });
+      const blob = await pdf(<SecurityReport data={data} timeRangeHours={24} />).toBlob();
+      
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      await writeFile(filePath, uint8Array);
+      toast.success(`PDF Report saved successfully`, { id: "pdf-gen" });
+    } catch (e) {
+      toast.error("Failed to generate PDF", { id: "pdf-gen", description: String(e) });
+    }
+  };
+
+  const handleClearHistory = async () => {
+    try {
+      toast.loading("Clearing database...", { id: "clear-db" });
+      await invoke("clear_database");
+      toast.success("Database cleared successfully", { id: "clear-db" });
+      window.location.reload();
+    } catch (e) {
+      toast.error("Failed to clear database", { id: "clear-db", description: String(e) });
+    }
+  };
+
   return (
     <div className="w-full border-b py-2 text-sm">
       <Menubar className="border-none">
@@ -190,7 +227,7 @@ const Infobar = () => {
                   Export as CSV <MenubarShortcut>Ctrl+Shift+E</MenubarShortcut>
                 </MenubarItem>
                 <MenubarItem onSelect={() => handleExportData('json')}>Export as JSON</MenubarItem>
-                <MenubarItem onSelect={() => toast.info('PDF export coming soon')}>Export as PDF Report</MenubarItem>
+                <MenubarItem onSelect={handleGeneratePDF}>Export as PDF Report</MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
             <MenubarItem onSelect={handleRestoreSnapshot}>
@@ -219,7 +256,7 @@ const Infobar = () => {
             </MenubarItem>
             <MenubarSeparator />
             <MenubarItem onSelect={() => toast.info('Pause Alerts coming soon')}>Pause All Alerts</MenubarItem>
-            <MenubarItem onSelect={() => toast.info('Clear Alert History coming soon')}>Clear Alert History</MenubarItem>
+            <MenubarItem onSelect={handleClearHistory} className="text-destructive focus:text-destructive">Clear Alert History</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
 
