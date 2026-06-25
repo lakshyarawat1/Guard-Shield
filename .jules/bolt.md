@@ -13,3 +13,7 @@
 ## 2025-06-24 - Inline Component Definitions inside Virtualized Lists cause Constant Remounting
 **Learning:** In `LiveTraffic.tsx`, defining sub-components (Table, TableRow, TableBody, EmptyPlaceholder) inline within the `components` prop of `TableVirtuoso` causes React to see them as new component types on every render. Given the frequent updates from live packet capture, this leads to continuous unmounting and remounting of the entire DOM subtree, drastically reducing performance and causing high CPU usage.
 **Action:** Always define components passed to virtualized lists (or any component accepting component props) at the module level outside the render loop. If they need state or props from the parent, pass it via the provided `context` prop.
+
+## 2026-06-25 - Prevent O(N) filtering inside render loop
+**Learning:** Found an inline `.filter` array operation running on a large dataset (alerts) inside the React render cycle in `Monitoring.tsx`. This caused O(N) operations on every render, severely impacting performance for large amounts of alerts.
+**Action:** Use `useMemo` and derive metrics (like counts) from pre-existing memoized grouped data structures where possible to change O(N) operations into O(1) lookups.
