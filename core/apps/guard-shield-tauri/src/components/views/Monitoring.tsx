@@ -238,6 +238,12 @@ const Monitoring = () => {
     ].filter(d => d.value > 0);
   }, [alerts]);
 
+  // ⚡ Bolt Optimization: Memoize criticalCount calculation to prevent unnecessary O(n) array filter on every render.
+  const criticalCount = useMemo(() => {
+    const criticalData = severityCounts.find(s => s.name === "Critical");
+    return criticalData ? criticalData.value : 0;
+  }, [severityCounts]);
+
   return (
     <div className="flex flex-col gap-6 p-4 h-full w-full bg-background overflow-hidden">
       
@@ -275,7 +281,7 @@ const Monitoring = () => {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-destructive">
-              {alerts.filter(a => a.severity === "Critical").length.toLocaleString()}
+              {criticalCount.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Require immediate attention</p>
           </CardContent>
