@@ -21,7 +21,7 @@ import {
   Settings,
   ShieldCheck,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { openCreateRuleWindow, openGeneralSettingsWindow, openNetworkingSettingsWindow } from "../../utils/windows";
 import { Button } from "../../components/ui/button";
@@ -35,7 +35,7 @@ const Sidebar = () => {
     return localStorage.getItem("guard_shield_show_sidebar") !== "false";
   });
   
-  const [isCollapsed, setIsCollapsed] = useState(() => {
+  const [isCollapsed] = useState(() => {
     return localStorage.getItem("guard_shield_sidebar_collapsed") === "true";
   });
 
@@ -49,32 +49,9 @@ const Sidebar = () => {
 
   if (!isVisible) return null;
 
-  const SidebarItem = ({ icon: Icon, text, onClick, iconClass }: any) => {
-    if (isCollapsed) {
-      return (
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" onClick={onClick}>
-              <Icon className={cn("size-5", iconClass)} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right" className="font-semibold">{text}</TooltipContent>
-        </Tooltip>
-      );
-    }
-    return (
-      <Button 
-        variant="ghost"
-        className="w-full justify-start gap-3 h-auto py-2.5 px-3 font-normal"
-        onClick={onClick}
-      >
-        <Icon className={cn("size-4 shrink-0", iconClass)} />
-        <span className="truncate">{text}</span>
-      </Button>
-    );
-  };
-
-  const navCategories = [
+  // Performance improvement: Memoize navigation categories to prevent
+  // recreating this static, nested array structure on every render of Sidebar
+  const navCategories = useMemo(() => [
     {
       title: "Threat Monitoring",
       items: [
@@ -111,7 +88,7 @@ const Sidebar = () => {
         { text: "General Settings", icon: Settings, onClick: openGeneralSettingsWindow },
       ]
     }
-  ];
+  ], [navigate]);
 
   return (
     <div className={cn("shrink-0 border-r h-full py-4 max-h-screen overflow-hidden min-h-164 transition-all duration-300", isCollapsed ? "w-16 px-2 overflow-y-auto custom-scrollbar" : "w-56 px-3")}>
@@ -121,7 +98,7 @@ const Sidebar = () => {
             {navCategories.map((cat, i) => (
               <div key={i} className="flex flex-col items-center gap-1 w-full">
                 {cat.items.map((item, j) => (
-                  <SidebarItem key={j} {...item} />
+                  <SidebarItem key={j} {...item} isCollapsed={isCollapsed} />
                 ))}
                 {i < navCategories.length - 1 && <Separator className="w-8 my-2 opacity-50" />}
               </div>
@@ -135,7 +112,7 @@ const Sidebar = () => {
               <AccordionTrigger>{cat.title}</AccordionTrigger>
               <AccordionContent className="flex flex-col gap-1">
                 {cat.items.map((item, j) => (
-                  <SidebarItem key={j} {...item} />
+                  <SidebarItem key={j} {...item} isCollapsed={isCollapsed} />
                 ))}
               </AccordionContent>
             </AccordionItem>
@@ -146,4 +123,33 @@ const Sidebar = () => {
   );
 };
 
-export default Sidebar;
+// Performance improvement: Extract SidebarItem to prevent React from seeing a
+// new component type on every Sidebar render. If defined inside Sidebar, React
+// would fully unmount and remount every list item in the DOM tree on every render.
+// Wrap in React.memo to skip rendering if props haven't changed.
+const SidebarItem = React.memo(({ icon: Icon, text, onClick, iconClass, isCollapsed }: any) => {
+  if (isCollapsed) {
+    return (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" onClick={onClick}>
+            <Icon className={cn("size-5", iconClass)} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="font-semibold">{text}</TooltipContent>
+      </Tooltip>
+    );
+  }
+  return (
+    <Button
+      variant="ghost"
+      className="w-full justify-start gap-3 h-auto py-2.5 px-3 font-normal"
+      onClick={onClick}
+    >
+      <Icon className={cn("size-4 shrink-0", iconClass)} />
+      <span className="truncate">{text}</span>
+    </Button>
+  );
+});
+
+export default React.memo(Sidebar);

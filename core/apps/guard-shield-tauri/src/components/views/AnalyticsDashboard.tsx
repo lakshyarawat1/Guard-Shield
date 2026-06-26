@@ -38,7 +38,7 @@ const getChartColors = (theme: "dark" | "light") => ({
 });
 
 export default function AnalyticsDashboard() {
-  const { theme, resolvedTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const colors = getChartColors(resolvedTheme);
   
   const isSmooth = localStorage.getItem("guard_shield_chart_smooth") !== "false";
