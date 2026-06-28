@@ -79,12 +79,14 @@ const Monitoring = () => {
   };
 
   const filteredAlerts = useMemo(() => {
+    // ⚡ Bolt Optimization: Pre-compute static search term to prevent redundant string operations inside the filter loop
+    const lowerSearchQuery = searchQuery.toLowerCase();
     return alerts.filter(a => {
       const matchSeverity = severityFilter === "All" || a.severity === severityFilter;
       const matchStarred = !showOnlyStarred;
       const matchSearch = searchQuery === "" || 
                           (a.src_ip && a.src_ip.includes(searchQuery)) || 
-                          (a.info && a.info.toLowerCase().includes(searchQuery.toLowerCase()));
+                          (a.info && a.info.toLowerCase().includes(lowerSearchQuery));
       return matchSeverity && matchStarred && matchSearch;
     });
   }, [alerts, severityFilter, showOnlyStarred, searchQuery]);
