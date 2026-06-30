@@ -17,3 +17,7 @@
 ## 2026-06-25 - Prevent O(N) filtering inside render loop
 **Learning:** Found an inline `.filter` array operation running on a large dataset (alerts) inside the React render cycle in `Monitoring.tsx`. This caused O(N) operations on every render, severely impacting performance for large amounts of alerts.
 **Action:** Use `useMemo` and derive metrics (like counts) from pre-existing memoized grouped data structures where possible to change O(N) operations into O(1) lookups.
+
+## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
+**Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
+**Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
