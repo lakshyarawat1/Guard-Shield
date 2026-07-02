@@ -17,3 +17,7 @@
 ## 2026-06-25 - Prevent O(N) filtering inside render loop
 **Learning:** Found an inline `.filter` array operation running on a large dataset (alerts) inside the React render cycle in `Monitoring.tsx`. This caused O(N) operations on every render, severely impacting performance for large amounts of alerts.
 **Action:** Use `useMemo` and derive metrics (like counts) from pre-existing memoized grouped data structures where possible to change O(N) operations into O(1) lookups.
+
+## 2025-02-28 - Unthrottled State Updates with Large Datasets
+**Learning:** Found a critical performance bottleneck in `LiveTraffic.tsx` where high-frequency events (up to 10 emits/sec from Tauri backend) updated the component state immediately. Because the state contained a large array (up to 10,000 items) that was subsequently filtered and sorted (O(N log N)), updating the state 10 times a second crippled the main thread and caused high CPU usage.
+**Action:** Always buffer and throttle React state updates for high-frequency events (like websockets or IPC listeners) when dealing with large datasets or heavy derived state calculations. A throttle of 500ms (2fps) keeps the UI feeling real-time while drastically reducing main thread blocking.
