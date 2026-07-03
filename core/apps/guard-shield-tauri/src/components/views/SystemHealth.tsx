@@ -6,6 +6,7 @@ import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
 import ReactECharts from "echarts-for-react";
 import { useTheme } from "../ThemeProvider";
+import { toast } from "sonner";
 import { 
   Cpu, 
   Database, 
@@ -77,7 +78,7 @@ export default function SystemHealth() {
       })));
     } catch (e) {
       console.error("Failed to clear database", e);
-      alert("Error: " + e);
+      toast.error("Failed to clear database.");
     } finally {
       setIsClearing(false);
     }
