@@ -17,3 +17,7 @@
 ## 2026-06-25 - Prevent O(N) filtering inside render loop
 **Learning:** Found an inline `.filter` array operation running on a large dataset (alerts) inside the React render cycle in `Monitoring.tsx`. This caused O(N) operations on every render, severely impacting performance for large amounts of alerts.
 **Action:** Use `useMemo` and derive metrics (like counts) from pre-existing memoized grouped data structures where possible to change O(N) operations into O(1) lookups.
+
+## 2024-05-18 - [SQLite Subquery Performance]
+**Learning:** Using `NOT IN` with a large subquery result (`SELECT id FROM packets ORDER BY id DESC LIMIT 10000`) forces SQLite to scan checking against the large list, resulting in O(N) performance that degrades significantly as the table grows (~16ms in test with 25k rows).
+**Action:** Replace `id NOT IN (subquery)` with `id <= (SELECT id FROM packets ORDER BY id DESC LIMIT 1 OFFSET 10000)`. The `OFFSET` approach computes a single threshold value in O(log N) time, making the deletion over 40x faster (~0.4ms) and preventing the database bottleneck as traffic increases.
