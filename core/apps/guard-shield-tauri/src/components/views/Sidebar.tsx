@@ -20,17 +20,22 @@ import {
   SearchIcon,
   Settings,
   ShieldCheck,
+  Users,
+  Shield
 } from "lucide-react";
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { openCreateRuleWindow, openGeneralSettingsWindow, openNetworkingSettingsWindow } from "../../utils/windows";
+import { openCreateRuleWindow, openGeneralSettingsWindow, openNetworkingSettingsWindow, openTeamManagementWindow } from "../../utils/windows";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Separator } from "../../components/ui/separator";
+import { usePermission } from "../../hooks/usePermission";
+import { Permission } from "../../types/permissions";
 
 const Sidebar = () => {
   const navigate = useNavigate();
+  const { hasPermission } = usePermission();
   const [isVisible, setIsVisible] = useState(() => {
     return localStorage.getItem("guard_shield_show_sidebar") !== "false";
   });
@@ -82,10 +87,17 @@ const Sidebar = () => {
     {
       title: "System & Settings",
       items: [
-        { text: "System Health", icon: HeartPulse, onClick: () => navigate("/system-health") },
-        { text: "Audit Logs", icon: ScrollText, onClick: () => navigate("/audit-logs") },
-        { text: "Networking Settings", icon: NetworkIcon, onClick: openNetworkingSettingsWindow },
-        { text: "General Settings", icon: Settings, onClick: openGeneralSettingsWindow },
+        { text: "System Health", icon: HeartPulse, onClick: () => navigate("/system-health"), permission: Permission.SYSTEM_HEALTH_VIEW },
+        { text: "Audit Logs", icon: ScrollText, onClick: () => navigate("/audit-logs"), permission: Permission.AUDIT_LOGS_VIEW },
+        { text: "Networking Settings", icon: NetworkIcon, onClick: openNetworkingSettingsWindow, permission: Permission.SETTINGS_VIEW },
+        { text: "General Settings", icon: Settings, onClick: openGeneralSettingsWindow, permission: Permission.SETTINGS_VIEW },
+      ]
+    },
+    {
+      title: "Team & Access",
+      items: [
+        { text: "Team Management", icon: Users, onClick: openTeamManagementWindow, permission: Permission.USERS_VIEW },
+        { text: "Access Control", icon: Shield, onClick: () => navigate("/access-control"), permission: Permission.ROLES_ASSIGN },
       ]
     }
   ], [navigate]);
@@ -95,28 +107,36 @@ const Sidebar = () => {
       {isCollapsed ? (
         <TooltipProvider>
           <div className="flex flex-col items-center gap-4 mt-2">
-            {navCategories.map((cat, i) => (
-              <div key={i} className="flex flex-col items-center gap-1 w-full">
-                {cat.items.map((item, j) => (
-                  <SidebarItem key={j} {...item} isCollapsed={isCollapsed} />
-                ))}
-                {i < navCategories.length - 1 && <Separator className="w-8 my-2 opacity-50" />}
-              </div>
-            ))}
+            {navCategories.map((cat, i) => {
+              const visibleItems = cat.items.filter((item: any) => !item.permission || hasPermission(item.permission));
+              if (visibleItems.length === 0) return null;
+              return (
+                <div key={i} className="flex flex-col items-center gap-1 w-full">
+                  {visibleItems.map((item, j) => (
+                    <SidebarItem key={j} {...item} isCollapsed={isCollapsed} />
+                  ))}
+                  {i < navCategories.length - 1 && <Separator className="w-8 my-2 opacity-50" />}
+                </div>
+              );
+            })}
           </div>
         </TooltipProvider>
       ) : (
         <Accordion type="single" className="w-full" collapsible defaultValue="Threat Monitoring">
-          {navCategories.map((cat, i) => (
-            <AccordionItem key={i} value={cat.title}>
-              <AccordionTrigger>{cat.title}</AccordionTrigger>
-              <AccordionContent className="flex flex-col gap-1">
-                {cat.items.map((item, j) => (
-                  <SidebarItem key={j} {...item} isCollapsed={isCollapsed} />
-                ))}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+          {navCategories.map((cat, i) => {
+            const visibleItems = cat.items.filter((item: any) => !item.permission || hasPermission(item.permission));
+            if (visibleItems.length === 0) return null;
+            return (
+              <AccordionItem key={i} value={cat.title}>
+                <AccordionTrigger>{cat.title}</AccordionTrigger>
+                <AccordionContent className="flex flex-col gap-1">
+                  {visibleItems.map((item, j) => (
+                    <SidebarItem key={j} {...item} isCollapsed={isCollapsed} />
+                  ))}
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
         </Accordion>
       )}
     </div>

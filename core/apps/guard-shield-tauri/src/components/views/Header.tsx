@@ -1,5 +1,4 @@
-
-import { Activity, Bell, ChevronDown, Shield, ShieldAlert, ShieldBan } from "lucide-react";
+import { Activity, Bell, ChevronDown, Shield, ShieldAlert, ShieldBan, User } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import {
   DropdownMenu,
@@ -14,6 +13,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { toast } from "sonner";
+import { useUser, useClerk } from "@clerk/react";
+import { useNavigate } from "react-router-dom";
+import { useNativeRBAC } from "../auth/NativeRBACProvider";
 import {
   openProfileWindow,
   openCreateRuleWindow,
@@ -33,6 +35,11 @@ export const applyFontSize = (size: string) => {
 // Global telemetry variables removed to favor component state and proper React lifecycle
 
 export function Header() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const navigate = useNavigate();
+  const { organizations, activeOrganization, setActiveOrganization } = useNativeRBAC();
+
   const [isCapturing, setIsCapturing] = useState<boolean>(() => {
     return localStorage.getItem("guard_shield_is_capturing") === "true";
   });
@@ -392,13 +399,49 @@ export function Header() {
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Organization Switcher */}
+            <div className="flex items-center">
+              <Select 
+                value={activeOrganization?.id || ""} 
+                onValueChange={(val) => {
+                  if (val === "new") {
+                    navigate("/org-select");
+                  } else {
+                    setActiveOrganization(val);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-[200px] h-9 border-input bg-background/50 hover:bg-accent hover:text-accent-foreground font-medium">
+                  <SelectValue placeholder="Select Organization" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                  <div className="h-px bg-border my-1" />
+                  <SelectItem value="new" className="text-primary font-medium cursor-pointer">
+                    + Create Organization
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* User Profile */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   className="flex items-center gap-2 px-4 cursor-pointer"
                   variant="outline"
                 >
-                  Guest <ChevronDown className="size-4" />{" "}
+                  {user?.imageUrl ? (
+                    <img src={user.imageUrl} alt={user.fullName || "User"} className="size-5 rounded-full" />
+                  ) : (
+                    <User className="size-4" />
+                  )}
+                  {user?.firstName || "Guest"} <ChevronDown className="size-4" />{" "}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -420,7 +463,7 @@ export function Header() {
                   About Guard Shield
                 </DropdownMenuItem>
                 <Separator className="my-1" />
-                <DropdownMenuItem className="cursor-pointer text-destructive">
+                <DropdownMenuItem className="cursor-pointer text-destructive" onSelect={() => signOut(() => navigate("/login"))}>
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>

@@ -2,8 +2,14 @@ import { User, Mail, ShieldCheck, Key, Settings, CreditCard } from "lucide-react
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
+import { useUser, useClerk } from "@clerk/react";
+import { usePermission } from "../../hooks/usePermission";
 
 export default function Profile() {
+  const { user } = useUser();
+  const { openUserProfile } = useClerk();
+  const { role } = usePermission();
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       
@@ -18,32 +24,37 @@ export default function Profile() {
               Manage your account settings, credentials, and access keys.
             </p>
           </div>
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            Edit Profile
+          <Button onClick={() => openUserProfile()} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            Manage Account
           </Button>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* User Info Card */}
           <div className="md:col-span-1 flex flex-col gap-6">
-            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 flex flex-col items-center text-center">
-              <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-4 border-4 border-background shadow-lg">
-                <User className="size-12 text-muted-foreground" />
+            <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 flex flex-col items-center text-center relative overflow-hidden">
+              <div className="absolute top-0 w-full h-24 bg-primary/10"></div>
+              <div className="relative z-10 w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-4 border-4 border-background shadow-lg overflow-hidden">
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt={user.fullName || "User"} className="w-full h-full object-cover" />
+                ) : (
+                  <User className="size-12 text-muted-foreground" />
+                )}
               </div>
-              <h2 className="text-xl font-bold">Guest User</h2>
-              <p className="text-sm text-muted-foreground mb-4">guest@example.com</p>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                Standard Access
+              <h2 className="text-xl font-bold">{user?.fullName || "Guest User"}</h2>
+              <p className="text-sm text-muted-foreground mb-4">{user?.primaryEmailAddress?.emailAddress || "No email"}</p>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 capitalize">
+                {role} Access
               </Badge>
               <Separator className="my-6" />
               <div className="w-full space-y-3">
                 <div className="flex items-center text-sm text-muted-foreground">
                   <Mail className="size-4 mr-3" />
-                  <span className="truncate">guest@example.com</span>
+                  <span className="truncate">{user?.primaryEmailAddress?.emailAddress || "N/A"}</span>
                 </div>
                 <div className="flex items-center text-sm text-muted-foreground">
                   <ShieldCheck className="size-4 mr-3" />
-                  <span>2FA Disabled</span>
+                  <span>2FA {user?.twoFactorEnabled ? "Enabled" : "Disabled"}</span>
                 </div>
               </div>
             </div>

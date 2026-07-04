@@ -1,6 +1,8 @@
 import { Header } from "./Header";
 import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
+import IncidentPanel from "./IncidentPanel";
+import { Button } from "../../components/ui/button";
 import { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -50,6 +52,7 @@ interface AlertData {
 
 export default function SuspiciousTraffic() {
   const [alerts, setAlerts] = useState<AlertData[]>([]);
+  const [selectedAlert, setSelectedAlert] = useState<AlertData | null>(null);
 
   // Fetch initial alerts
   useEffect(() => {
@@ -272,12 +275,13 @@ export default function SuspiciousTraffic() {
                       <TableHead className="font-semibold h-10 py-2">Source IP</TableHead>
                       <TableHead className="font-semibold h-10 py-2">Port</TableHead>
                       <TableHead className="font-semibold h-10 py-2">Threat Info</TableHead>
+                      <TableHead className="font-semibold h-10 py-2 text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {alerts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-32 text-center text-muted-foreground border-border/50">
+                        <TableCell colSpan={7} className="h-32 text-center text-muted-foreground border-border/50">
                           <div className="flex flex-col items-center justify-center">
                             <ShieldAlert className="h-8 w-8 mb-2 opacity-20" />
                             <p>No high-severity threats detected.</p>
@@ -306,6 +310,11 @@ export default function SuspiciousTraffic() {
                           <TableCell className="text-xs text-muted-foreground truncate max-w-[250px] font-medium">
                             {item.info || "—"}
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm" onClick={() => setSelectedAlert(item)}>
+                              Investigate
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -317,6 +326,11 @@ export default function SuspiciousTraffic() {
           </div>
         </div>
       </div>
+      <IncidentPanel 
+        isOpen={!!selectedAlert} 
+        onClose={() => setSelectedAlert(null)} 
+        alert={selectedAlert} 
+      />
     </div>
   );
 }
