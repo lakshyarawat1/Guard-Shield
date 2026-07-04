@@ -830,7 +830,6 @@ fn restore_snapshot(app: tauri::AppHandle, source: String) -> Result<(), String>
     let db_path = app_dir.join("guard_shield.db");
     std::fs::copy(&source, &db_path).map_err(|e| format!("Failed to restore snapshot: {}", e))?;
     app.restart();
-    Ok(())
 }
 
 #[tauri::command]
