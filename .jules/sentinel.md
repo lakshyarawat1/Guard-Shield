@@ -11,3 +11,7 @@
 **Vulnerability:** User-provided inputs (IP addresses and ports) were being directly concatenated into WinDivert filter strings in `ips_engine.rs` without validation.
 **Learning:** This is a classic injection vulnerability pattern applied to network filtering strings instead of SQL. Attackers could manipulate inputs (e.g., ports) with crafted payloads like `80 or ip.SrcAddr == 1.2.3.4` to bypass rules or drop all network traffic.
 **Prevention:** All user-provided network configuration values must be explicitly parsed into strict types (e.g., `std::net::IpAddr` for IPs and `u16` for ports) before string formatting, failing securely if parsing fails.
+## 2024-07-24 - Path Traversal in Tauri IPC Commands
+**Vulnerability:** The Tauri backend functions `save_snapshot` and `restore_snapshot` accepted unvalidated file paths from the frontend, allowing arbitrary file read/write (path traversal) using `std::fs::copy`.
+**Learning:** In Tauri, the frontend can theoretically pass any path to backend commands. By default, raw Rust filesystem operations (like `std::fs::copy`) bypass Tauri's scope configurations (`fs` plugin scopes).
+**Prevention:** Always validate file paths passed from the frontend using Tauri's FS scope plugin. Specifically, use `app.try_fs_scope().unwrap().is_allowed(&path)` before performing any file operations.
