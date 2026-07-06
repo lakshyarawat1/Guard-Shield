@@ -1,14 +1,18 @@
 mod database;
-mod packet_capturer;
 mod ips_engine;
+mod packet_capturer;
 pub mod threat_feed;
 
 use crossbeam_channel::{unbounded, Receiver};
-use packet_capturer::PacketData;
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
-use tauri::{AppHandle, Emitter, State, Manager};
 use ips_engine::IpsEngine;
+use packet_capturer::PacketData;
 use std::collections::HashSet;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, RwLock,
+};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_fs::FsExt;
 
 struct AppState {
     capture_flag: Mutex<Option<Arc<AtomicBool>>>,
@@ -43,26 +47,31 @@ struct MalwareSettings {
     protections: MalwareProtections,
 }
 
-
 #[tauri::command]
 fn get_network_interfaces() -> Vec<String> {
     packet_capturer::get_interfaces()
 }
 
 #[tauri::command]
-fn get_historical_packets(state: State<'_, database::DatabaseState>) -> Result<Vec<PacketData>, String> {
+fn get_historical_packets(
+    state: State<'_, database::DatabaseState>,
+) -> Result<Vec<PacketData>, String> {
     let conn = state.conn.lock().unwrap();
     database::get_packets(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_alerts(state: State<'_, database::DatabaseState>) -> Result<Vec<database::AlertData>, String> {
+fn get_alerts(
+    state: State<'_, database::DatabaseState>,
+) -> Result<Vec<database::AlertData>, String> {
     let conn = state.conn.lock().unwrap();
     database::get_alerts(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_telemetry_stats(state: State<'_, database::DatabaseState>) -> Result<database::TelemetryStats, String> {
+fn get_telemetry_stats(
+    state: State<'_, database::DatabaseState>,
+) -> Result<database::TelemetryStats, String> {
     let conn = state.conn.lock().unwrap();
     database::get_telemetry_stats(&conn).map_err(|e| e.to_string())
 }
@@ -84,7 +93,10 @@ impl DnsResolver for RealDnsResolver {
     }
 }
 
-fn perform_dns_lookup_impl(query: String, resolver: &dyn DnsResolver) -> Result<Vec<String>, String> {
+fn perform_dns_lookup_impl(
+    query: String,
+    resolver: &dyn DnsResolver,
+) -> Result<Vec<String>, String> {
     // If it parses as an IP, try reverse lookup
     if let Ok(ip) = query.parse::<std::net::IpAddr>() {
         match resolver.lookup_addr(&ip) {
@@ -125,8 +137,11 @@ fn get_system_health_stats(
     db_state: State<'_, database::DatabaseState>,
 ) -> Result<database::SystemHealthStats, String> {
     let conn = db_state.conn.lock().unwrap();
-    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+
     let is_capturing = {
         let flag_lock = state.capture_flag.lock().unwrap();
         if let Some(flag) = &*flag_lock {
@@ -135,7 +150,7 @@ fn get_system_health_stats(
             false
         }
     };
-    
+
     database::get_system_health_stats(&conn, app_dir, is_capturing).map_err(|e| e.to_string())
 }
 
@@ -148,24 +163,34 @@ fn clear_database(db_state: State<'_, database::DatabaseState>) -> Result<(), St
 #[tauri::command]
 fn broadcast_ui_settings(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
-    app.emit("ui-settings-changed", ()).map_err(|e| e.to_string())
+    app.emit("ui-settings-changed", ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn stop_packet_capture(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>) -> Result<(), String> {
+fn stop_packet_capture(
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<(), String> {
     let mut flag_lock = state.capture_flag.lock().unwrap();
     if let Some(old_flag) = flag_lock.take() {
         old_flag.store(false, Ordering::Relaxed);
     }
     if let Ok(conn) = db_state.conn.lock() {
-        let _ = database::log_audit_event(&conn, "SYSTEM_EVENT", "WARNING", "Packet Capture Stopped", "Packet capturing thread terminated via UI.");
+        let _ = database::log_audit_event(
+            &conn,
+            "SYSTEM_EVENT",
+            "WARNING",
+            "Packet Capture Stopped",
+            "Packet capturing thread terminated via UI.",
+        );
     }
     Ok(())
 }
 
 #[tauri::command]
 fn block_ip(
-    ip: String, 
+    ip: String,
     reason: Option<String>,
     state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
@@ -190,49 +215,75 @@ fn block_ip(
     let reason_str = reason.unwrap_or_else(|| "Manual Block".to_string());
     if let Ok(conn) = db_state.conn.lock() {
         let _ = database::insert_blocked_ip(&conn, &ip, &reason_str);
-        let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "IP Blocked", &format!("IP: {}, Reason: {}", ip, reason_str));
+        let _ = database::log_audit_event(
+            &conn,
+            "USER_ACTION",
+            "INFO",
+            "IP Blocked",
+            &format!("IP: {}, Reason: {}", ip, reason_str),
+        );
     }
-    
+
     let mut ips = state.blocked_ips.write().unwrap();
     if !ips.contains(&ip) {
         ips.push(ip);
         let mut engine = state.ips_engine.lock().unwrap();
         let w_ips = state.whitelisted_ips.read().unwrap().clone();
-        engine.start(ips.clone(), state.custom_rules.read().unwrap().clone(), w_ips).map_err(|e| e.to_string())?;
+        engine
+            .start(
+                ips.clone(),
+                state.custom_rules.read().unwrap().clone(),
+                w_ips,
+            )
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
 fn unblock_ip(
-    ip: String, 
+    ip: String,
     state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
 ) -> Result<(), String> {
     if let Ok(conn) = db_state.conn.lock() {
         let _ = database::remove_blocked_ip(&conn, &ip);
-        let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "IP Unblocked", &format!("IP: {}", ip));
+        let _ = database::log_audit_event(
+            &conn,
+            "USER_ACTION",
+            "INFO",
+            "IP Unblocked",
+            &format!("IP: {}", ip),
+        );
     }
-    
+
     let mut ips = state.blocked_ips.write().unwrap();
     if let Some(pos) = ips.iter().position(|x| x == &ip) {
         ips.remove(pos);
         let mut engine = state.ips_engine.lock().unwrap();
         let w_ips = state.whitelisted_ips.read().unwrap().clone();
-        engine.start(ips.clone(), state.custom_rules.read().unwrap().clone(), w_ips).map_err(|e| e.to_string())?;
+        engine
+            .start(
+                ips.clone(),
+                state.custom_rules.read().unwrap().clone(),
+                w_ips,
+            )
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn get_blocked_ips(db_state: State<'_, database::DatabaseState>) -> Result<Vec<database::BlockedIpData>, String> {
+fn get_blocked_ips(
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<Vec<database::BlockedIpData>, String> {
     let conn = db_state.conn.lock().unwrap();
     database::get_blocked_ips(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn whitelist_ip(
-    ip: String, 
+    ip: String,
     reason: Option<String>,
     state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
@@ -257,42 +308,68 @@ fn whitelist_ip(
     let reason_str = reason.unwrap_or_else(|| "Manual Whitelist".to_string());
     if let Ok(conn) = db_state.conn.lock() {
         let _ = database::insert_whitelisted_ip(&conn, &ip, &reason_str);
-        let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "IP Whitelisted", &format!("IP: {}, Reason: {}", ip, reason_str));
+        let _ = database::log_audit_event(
+            &conn,
+            "USER_ACTION",
+            "INFO",
+            "IP Whitelisted",
+            &format!("IP: {}, Reason: {}", ip, reason_str),
+        );
     }
-    
+
     let mut ips = state.whitelisted_ips.write().unwrap();
     if !ips.contains(&ip) {
         ips.push(ip);
         let mut engine = state.ips_engine.lock().unwrap();
         let blocked = state.blocked_ips.read().unwrap().clone();
-        engine.start(blocked, state.custom_rules.read().unwrap().clone(), ips.clone()).map_err(|e| e.to_string())?;
+        engine
+            .start(
+                blocked,
+                state.custom_rules.read().unwrap().clone(),
+                ips.clone(),
+            )
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
 fn remove_whitelisted_ip(
-    ip: String, 
+    ip: String,
     state: State<'_, AppState>,
     db_state: State<'_, database::DatabaseState>,
 ) -> Result<(), String> {
     if let Ok(conn) = db_state.conn.lock() {
         let _ = database::remove_whitelisted_ip(&conn, &ip);
-        let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "IP Removed from Whitelist", &format!("IP: {}", ip));
+        let _ = database::log_audit_event(
+            &conn,
+            "USER_ACTION",
+            "INFO",
+            "IP Removed from Whitelist",
+            &format!("IP: {}", ip),
+        );
     }
-    
+
     let mut ips = state.whitelisted_ips.write().unwrap();
     if let Some(pos) = ips.iter().position(|x| x == &ip) {
         ips.remove(pos);
         let mut engine = state.ips_engine.lock().unwrap();
         let blocked = state.blocked_ips.read().unwrap().clone();
-        engine.start(blocked, state.custom_rules.read().unwrap().clone(), ips.clone()).map_err(|e| e.to_string())?;
+        engine
+            .start(
+                blocked,
+                state.custom_rules.read().unwrap().clone(),
+                ips.clone(),
+            )
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn get_whitelisted_ips(db_state: State<'_, database::DatabaseState>) -> Result<Vec<database::WhitelistedIpData>, String> {
+fn get_whitelisted_ips(
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<Vec<database::WhitelistedIpData>, String> {
     let conn = db_state.conn.lock().unwrap();
     database::get_whitelisted_ips(&conn).map_err(|e| e.to_string())
 }
@@ -305,16 +382,16 @@ fn get_dropped_packets(state: State<'_, AppState>) -> Result<usize, String> {
 
 #[tauri::command]
 fn test_connection(ip: String) -> Result<String, String> {
-    use std::net::{TcpStream, SocketAddr};
+    use std::net::{SocketAddr, TcpStream};
     use std::str::FromStr;
-    
+
     let addr = format!("{}:80", ip);
     let socket_addr = match SocketAddr::from_str(&addr) {
         Ok(sa) => sa,
         Err(e) => return Err(format!("Invalid IP address format: {}", e)),
     };
     let timeout = std::time::Duration::from_secs(3);
-    
+
     match TcpStream::connect_timeout(&socket_addr, timeout) {
         Ok(_) => Ok("Connected successfully! The IPS ALLOWED the traffic.".to_string()),
         Err(e) => {
@@ -340,17 +417,27 @@ fn trigger_mock_alert(
         match database::insert_mock_alert(&conn, &severity, impact, &src_ip) {
             Ok(alert) => {
                 let _ = app.emit("intrusion-alert", alert);
-                
+
                 // Active IPS Auto-Block Logic
-                if (severity == "Critical" || severity == "High") && state.auto_block_enabled.load(Ordering::Relaxed) {
+                if (severity == "Critical" || severity == "High")
+                    && state.auto_block_enabled.load(Ordering::Relaxed)
+                {
                     let w_ips = state.whitelisted_ips.read().unwrap();
                     if !w_ips.contains(&src_ip) {
-                        let _ = database::insert_blocked_ip(&conn, &src_ip, &format!("Auto-Blocked: Mock Alert ({})", severity));
+                        let _ = database::insert_blocked_ip(
+                            &conn,
+                            &src_ip,
+                            &format!("Auto-Blocked: Mock Alert ({})", severity),
+                        );
                         let mut ips = state.blocked_ips.write().unwrap();
                         if !ips.contains(&src_ip) {
                             ips.push(src_ip.clone());
                             if let Ok(mut engine) = state.ips_engine.lock() {
-                                let _ = engine.start(ips.clone(), state.custom_rules.read().unwrap().clone(), w_ips.clone());
+                                let _ = engine.start(
+                                    ips.clone(),
+                                    state.custom_rules.read().unwrap().clone(),
+                                    w_ips.clone(),
+                                );
                             }
                         }
                     }
@@ -363,7 +450,11 @@ fn trigger_mock_alert(
 }
 
 #[tauri::command]
-fn add_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, rule: database::CustomRule) -> Result<i64, String> {
+fn add_custom_rule(
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+    rule: database::CustomRule,
+) -> Result<i64, String> {
     if let Some(src) = &rule.src_ip {
         if !src.is_empty() && src.parse::<std::net::IpAddr>().is_err() {
             return Err("Invalid source IP address".to_string());
@@ -387,8 +478,14 @@ fn add_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::Dat
 
     let conn = db_state.conn.lock().unwrap();
     let id = database::insert_custom_rule(&conn, &rule).map_err(|e| e.to_string())?;
-    let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "Added Custom Rule", &format!("Rule '{}' for protocol {}", rule.name, rule.protocol));
-    
+    let _ = database::log_audit_event(
+        &conn,
+        "USER_ACTION",
+        "INFO",
+        "Added Custom Rule",
+        &format!("Rule '{}' for protocol {}", rule.name, rule.protocol),
+    );
+
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
             *cache = rules.clone();
@@ -403,17 +500,29 @@ fn add_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::Dat
 }
 
 #[tauri::command]
-fn fetch_custom_rules(db_state: State<'_, database::DatabaseState>) -> Result<Vec<database::CustomRule>, String> {
+fn fetch_custom_rules(
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<Vec<database::CustomRule>, String> {
     let conn = db_state.conn.lock().unwrap();
     database::get_custom_rules(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn remove_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64) -> Result<(), String> {
+fn remove_custom_rule(
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+    id: i64,
+) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::delete_custom_rule(&conn, id).map_err(|e| e.to_string())?;
-    let _ = database::log_audit_event(&conn, "USER_ACTION", "WARNING", "Deleted Custom Rule", &format!("Rule ID: {}", id));
-    
+    let _ = database::log_audit_event(
+        &conn,
+        "USER_ACTION",
+        "WARNING",
+        "Deleted Custom Rule",
+        &format!("Rule ID: {}", id),
+    );
+
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
             *cache = rules.clone();
@@ -428,11 +537,22 @@ fn remove_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::
 }
 
 #[tauri::command]
-fn edit_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64, rule: database::CustomRule) -> Result<(), String> {
+fn edit_custom_rule(
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+    id: i64,
+    rule: database::CustomRule,
+) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::update_custom_rule(&conn, id, &rule).map_err(|e| e.to_string())?;
-    let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", "Edited Custom Rule", &format!("Rule ID: {}", id));
-    
+    let _ = database::log_audit_event(
+        &conn,
+        "USER_ACTION",
+        "INFO",
+        "Edited Custom Rule",
+        &format!("Rule ID: {}", id),
+    );
+
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
             *cache = rules.clone();
@@ -447,12 +567,27 @@ fn edit_custom_rule(state: State<'_, AppState>, db_state: State<'_, database::Da
 }
 
 #[tauri::command]
-fn toggle_custom_rule_state(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, id: i64, is_active: bool) -> Result<(), String> {
+fn toggle_custom_rule_state(
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+    id: i64,
+    is_active: bool,
+) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::toggle_custom_rule(&conn, id, is_active).map_err(|e| e.to_string())?;
-    let action_str = if is_active { "Enabled Custom Rule" } else { "Disabled Custom Rule" };
-    let _ = database::log_audit_event(&conn, "USER_ACTION", "INFO", action_str, &format!("Rule ID: {}", id));
-    
+    let action_str = if is_active {
+        "Enabled Custom Rule"
+    } else {
+        "Disabled Custom Rule"
+    };
+    let _ = database::log_audit_event(
+        &conn,
+        "USER_ACTION",
+        "INFO",
+        action_str,
+        &format!("Rule ID: {}", id),
+    );
+
     if let Ok(rules) = database::get_custom_rules(&conn) {
         if let Ok(mut cache) = state.custom_rules.write() {
             *cache = rules.clone();
@@ -467,10 +602,18 @@ fn toggle_custom_rule_state(state: State<'_, AppState>, db_state: State<'_, data
 }
 
 #[tauri::command]
-fn toggle_auto_block(state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>, enabled: bool) -> Result<(), String> {
+fn toggle_auto_block(
+    state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+    enabled: bool,
+) -> Result<(), String> {
     state.auto_block_enabled.store(enabled, Ordering::Relaxed);
     if let Ok(conn) = db_state.conn.lock() {
-        let action_str = if enabled { "Enabled IPS Auto-Block" } else { "Disabled IPS Auto-Block" };
+        let action_str = if enabled {
+            "Enabled IPS Auto-Block"
+        } else {
+            "Disabled IPS Auto-Block"
+        };
         let _ = database::log_audit_event(&conn, "USER_ACTION", "WARNING", action_str, "");
     }
     Ok(())
@@ -491,24 +634,35 @@ fn start_packet_capture(
     let new_flag = Arc::new(AtomicBool::new(true));
     *flag_lock = Some(new_flag.clone());
 
-    let (tx, rx): (
-        crossbeam_channel::Sender<PacketData>,
-        Receiver<PacketData>,
-    ) = unbounded();
+    let (tx, rx): (crossbeam_channel::Sender<PacketData>, Receiver<PacketData>) = unbounded();
 
-    if let Err(e) = packet_capturer::start_capture(interface_name.clone(), bpf_filter.clone(), tx, new_flag) {
+    if let Err(e) =
+        packet_capturer::start_capture(interface_name.clone(), bpf_filter.clone(), tx, new_flag)
+    {
         *flag_lock = None;
         if let Some(db_state) = app.try_state::<database::DatabaseState>() {
             if let Ok(conn) = db_state.conn.lock() {
-                let _ = database::log_audit_event(&conn, "SYSTEM_EVENT", "CRITICAL", "Capture Engine Failed", &format!("Error: {}", e));
+                let _ = database::log_audit_event(
+                    &conn,
+                    "SYSTEM_EVENT",
+                    "CRITICAL",
+                    "Capture Engine Failed",
+                    &format!("Error: {}", e),
+                );
             }
         }
         return Err(e);
     }
-    
+
     if let Some(db_state) = app.try_state::<database::DatabaseState>() {
         if let Ok(conn) = db_state.conn.lock() {
-            let _ = database::log_audit_event(&conn, "SYSTEM_EVENT", "INFO", "Packet Capture Started", &format!("Interface: {}, Filter: {}", interface_name, bpf_filter));
+            let _ = database::log_audit_event(
+                &conn,
+                "SYSTEM_EVENT",
+                "INFO",
+                "Packet Capture Started",
+                &format!("Interface: {}, Filter: {}", interface_name, bpf_filter),
+            );
         }
     }
 
@@ -518,7 +672,7 @@ fn start_packet_capture(
         let rx_clone = rx.clone();
         let ui_tx_clone = ui_tx.clone();
         let app_clone = app.clone();
-        
+
         std::thread::spawn(move || {
             let mut counter = 0u64;
             while let Ok(mut p) = rx_clone.recv() {
@@ -527,19 +681,31 @@ fn start_packet_capture(
                         if let Ok(conn) = db_state.conn.lock() {
                             let rules = app_state.custom_rules.read().unwrap();
                             let geoip_lock = app_state.geoip_reader.read().unwrap();
-                            
+
                             // GeoIP Enrichment
                             if let Some(reader) = geoip_lock.as_ref() {
                                 if let Some(src_ip_str) = p.ip_src.first() {
                                     if let Ok(ip) = src_ip_str.parse::<std::net::IpAddr>() {
                                         let is_local = match ip {
-                                            std::net::IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_loopback() || ipv4.is_link_local() || ipv4.is_multicast() || ipv4.is_broadcast(),
-                                            std::net::IpAddr::V6(ipv6) => ipv6.is_loopback() || ipv6.is_multicast(),
+                                            std::net::IpAddr::V4(ipv4) => {
+                                                ipv4.is_private()
+                                                    || ipv4.is_loopback()
+                                                    || ipv4.is_link_local()
+                                                    || ipv4.is_multicast()
+                                                    || ipv4.is_broadcast()
+                                            }
+                                            std::net::IpAddr::V6(ipv6) => {
+                                                ipv6.is_loopback() || ipv6.is_multicast()
+                                            }
                                         };
                                         if is_local {
                                             p.src_country = vec!["LOCAL".to_string()];
-                                        } else if let Ok(country) = reader.lookup::<maxminddb::geoip2::Country>(ip) {
-                                            if let Some(c) = country.country.and_then(|c| c.iso_code) {
+                                        } else if let Ok(country) =
+                                            reader.lookup::<maxminddb::geoip2::Country>(ip)
+                                        {
+                                            if let Some(c) =
+                                                country.country.and_then(|c| c.iso_code)
+                                            {
                                                 p.src_country = vec![c.to_string()];
                                             }
                                         }
@@ -548,13 +714,25 @@ fn start_packet_capture(
                                 if let Some(dst_ip_str) = p.ip_dst.first() {
                                     if let Ok(ip) = dst_ip_str.parse::<std::net::IpAddr>() {
                                         let is_local = match ip {
-                                            std::net::IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_loopback() || ipv4.is_link_local() || ipv4.is_multicast() || ipv4.is_broadcast(),
-                                            std::net::IpAddr::V6(ipv6) => ipv6.is_loopback() || ipv6.is_multicast(),
+                                            std::net::IpAddr::V4(ipv4) => {
+                                                ipv4.is_private()
+                                                    || ipv4.is_loopback()
+                                                    || ipv4.is_link_local()
+                                                    || ipv4.is_multicast()
+                                                    || ipv4.is_broadcast()
+                                            }
+                                            std::net::IpAddr::V6(ipv6) => {
+                                                ipv6.is_loopback() || ipv6.is_multicast()
+                                            }
                                         };
                                         if is_local {
                                             p.dst_country = vec!["LOCAL".to_string()];
-                                        } else if let Ok(country) = reader.lookup::<maxminddb::geoip2::Country>(ip) {
-                                            if let Some(c) = country.country.and_then(|c| c.iso_code) {
+                                        } else if let Ok(country) =
+                                            reader.lookup::<maxminddb::geoip2::Country>(ip)
+                                        {
+                                            if let Some(c) =
+                                                country.country.and_then(|c| c.iso_code)
+                                            {
                                                 p.dst_country = vec![c.to_string()];
                                             }
                                         }
@@ -562,21 +740,40 @@ fn start_packet_capture(
                                 }
                             }
 
-                            let enable_malware_sigs = app_state.malware_signatures_enabled.load(Ordering::Relaxed);
+                            let enable_malware_sigs =
+                                app_state.malware_signatures_enabled.load(Ordering::Relaxed);
                             let threat_ips_lock = app_state.threat_ips.read().unwrap();
-                            if let Ok(Some(alert)) = database::insert_packet(&conn, &mut p, &mut counter, &rules, enable_malware_sigs, &threat_ips_lock) {
+                            if let Ok(Some(alert)) = database::insert_packet(
+                                &conn,
+                                &mut p,
+                                &mut counter,
+                                &rules,
+                                enable_malware_sigs,
+                                &threat_ips_lock,
+                            ) {
                                 let _ = app_clone.emit("intrusion-alert", alert.clone());
-                                
+
                                 // Auto-Block logic for live traffic
-                                if (alert.severity == "Critical" || alert.severity == "High") && app_state.auto_block_enabled.load(Ordering::Relaxed) && !alert.src_ip.is_empty() {
+                                if (alert.severity == "Critical" || alert.severity == "High")
+                                    && app_state.auto_block_enabled.load(Ordering::Relaxed)
+                                    && !alert.src_ip.is_empty()
+                                {
                                     let w_ips = app_state.whitelisted_ips.read().unwrap();
                                     if !w_ips.contains(&alert.src_ip) {
-                                        let _ = database::insert_blocked_ip(&conn, &alert.src_ip, &format!("Auto-Blocked: Alert ID #{}", alert.id));
+                                        let _ = database::insert_blocked_ip(
+                                            &conn,
+                                            &alert.src_ip,
+                                            &format!("Auto-Blocked: Alert ID #{}", alert.id),
+                                        );
                                         let mut ips = app_state.blocked_ips.write().unwrap();
                                         if !ips.contains(&alert.src_ip) {
                                             ips.push(alert.src_ip.clone());
                                             if let Ok(mut engine) = app_state.ips_engine.lock() {
-                                                let _ = engine.start(ips.clone(), app_state.custom_rules.read().unwrap().clone(), w_ips.clone());
+                                                let _ = engine.start(
+                                                    ips.clone(),
+                                                    app_state.custom_rules.read().unwrap().clone(),
+                                                    w_ips.clone(),
+                                                );
                                             }
                                         }
                                     }
@@ -597,7 +794,7 @@ fn start_packet_capture(
 
         while let Ok(packet) = ui_rx.recv() {
             batch.push(packet);
-            
+
             while let Ok(p) = ui_rx.try_recv() {
                 batch.push(p);
                 if batch.len() >= 200 {
@@ -627,7 +824,10 @@ fn get_audit_logs(
     db_state: State<'_, database::DatabaseState>,
 ) -> Result<Vec<database::AuditLog>, String> {
     let conn = db_state.conn.lock().unwrap();
-    database::get_audit_logs(&conn, log_type, limit, offset, start_date, end_date, category).map_err(|e| e.to_string())
+    database::get_audit_logs(
+        &conn, log_type, limit, offset, start_date, end_date, category,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -637,16 +837,27 @@ fn clear_audit_logs(db_state: State<'_, database::DatabaseState>) -> Result<(), 
 }
 
 #[tauri::command]
-fn fetch_settings(db_state: State<'_, database::DatabaseState>) -> Result<std::collections::HashMap<String, String>, String> {
+fn fetch_settings(
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
     let conn = db_state.conn.lock().unwrap();
     database::get_settings(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_settings(db_state: State<'_, database::DatabaseState>, settings: std::collections::HashMap<String, String>) -> Result<(), String> {
+fn save_settings(
+    db_state: State<'_, database::DatabaseState>,
+    settings: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
     let conn = db_state.conn.lock().unwrap();
     database::update_settings(&conn, &settings).map_err(|e| e.to_string())?;
-    let _ = database::log_audit_event(&conn, "SYSTEM", "INFO", "Updated Settings", "System settings were updated via the UI");
+    let _ = database::log_audit_event(
+        &conn,
+        "SYSTEM",
+        "INFO",
+        "Updated Settings",
+        "System settings were updated via the UI",
+    );
     Ok(())
 }
 
@@ -666,24 +877,43 @@ fn get_malware_settings(state: State<'_, AppState>) -> MalwareSettings {
 #[tauri::command]
 fn set_malware_setting(state: State<'_, AppState>, key: String, value: bool) -> Result<(), String> {
     match key.as_str() {
-        "engineEnabled" => { state.malware_engine_enabled.store(value, Ordering::Relaxed); }
-        "activeMode" => { state.malware_active_mode.store(value, Ordering::Relaxed); }
-        "signatures" => { state.malware_signatures_enabled.store(value, Ordering::Relaxed); }
-        "heuristics" => { state.malware_heuristics_enabled.store(value, Ordering::Relaxed); }
-        "autoBan" => { state.malware_autoban_enabled.store(value, Ordering::Relaxed); }
+        "engineEnabled" => {
+            state.malware_engine_enabled.store(value, Ordering::Relaxed);
+        }
+        "activeMode" => {
+            state.malware_active_mode.store(value, Ordering::Relaxed);
+        }
+        "signatures" => {
+            state
+                .malware_signatures_enabled
+                .store(value, Ordering::Relaxed);
+        }
+        "heuristics" => {
+            state
+                .malware_heuristics_enabled
+                .store(value, Ordering::Relaxed);
+        }
+        "autoBan" => {
+            state
+                .malware_autoban_enabled
+                .store(value, Ordering::Relaxed);
+        }
         _ => return Err(format!("Unknown setting key: {}", key)),
     }
     Ok(())
 }
 
 #[tauri::command]
-async fn sync_threat_feeds(app_state: State<'_, AppState>, db_state: State<'_, database::DatabaseState>) -> Result<Vec<threat_feed::ThreatIndicator>, String> {
+async fn sync_threat_feeds(
+    app_state: State<'_, AppState>,
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<Vec<threat_feed::ThreatIndicator>, String> {
     let indicators = threat_feed::sync_all_feeds().await?;
-    
+
     // Update DB
     let mut conn = db_state.conn.lock().unwrap();
     database::save_threat_indicators(&mut conn, &indicators).map_err(|e| e.to_string())?;
-    
+
     // Update Memory State
     let mut ips_set = app_state.threat_ips.write().unwrap();
     for ind in &indicators {
@@ -694,7 +924,9 @@ async fn sync_threat_feeds(app_state: State<'_, AppState>, db_state: State<'_, d
 }
 
 #[tauri::command]
-fn get_threat_feeds(db_state: State<'_, database::DatabaseState>) -> Result<Vec<threat_feed::ThreatIndicator>, String> {
+fn get_threat_feeds(
+    db_state: State<'_, database::DatabaseState>,
+) -> Result<Vec<threat_feed::ThreatIndicator>, String> {
     let conn = db_state.conn.lock().unwrap();
     database::get_all_threat_indicators(&conn).map_err(|e| e.to_string())
 }
@@ -706,16 +938,29 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let db_state = database::init_db(app_dir.clone()).expect("Failed to initialize database");
-    
-            let custom_rules = database::get_custom_rules(&db_state.conn.lock().unwrap()).unwrap_or_default();
-            
-            let blocked_ips_data = database::get_blocked_ips(&db_state.conn.lock().unwrap()).unwrap_or_default();
-            let blocked_ips_strings = blocked_ips_data.into_iter().map(|b| b.ip).collect::<Vec<String>>();
+            let app_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let db_state =
+                database::init_db(app_dir.clone()).expect("Failed to initialize database");
 
-            let whitelisted_ips_data = database::get_whitelisted_ips(&db_state.conn.lock().unwrap()).unwrap_or_default();
-            let whitelisted_ips_strings = whitelisted_ips_data.into_iter().map(|b| b.ip).collect::<Vec<String>>();
+            let custom_rules =
+                database::get_custom_rules(&db_state.conn.lock().unwrap()).unwrap_or_default();
+
+            let blocked_ips_data =
+                database::get_blocked_ips(&db_state.conn.lock().unwrap()).unwrap_or_default();
+            let blocked_ips_strings = blocked_ips_data
+                .into_iter()
+                .map(|b| b.ip)
+                .collect::<Vec<String>>();
+
+            let whitelisted_ips_data =
+                database::get_whitelisted_ips(&db_state.conn.lock().unwrap()).unwrap_or_default();
+            let whitelisted_ips_strings = whitelisted_ips_data
+                .into_iter()
+                .map(|b| b.ip)
+                .collect::<Vec<String>>();
 
             let geoip_reader = Arc::new(RwLock::new(None));
             let geoip_reader_clone = geoip_reader.clone();
@@ -725,7 +970,11 @@ pub fn run() {
                 let db_path = app_dir_clone.join("GeoLite2-Country.mmdb");
                 if !db_path.exists() {
                     println!("Downloading GeoLite2-Country.mmdb...");
-                    if let Ok(response) = reqwest::get("https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb").await {
+                    if let Ok(response) = reqwest::get(
+                        "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb",
+                    )
+                    .await
+                    {
                         if let Ok(bytes) = response.bytes().await {
                             let _ = std::fs::write(&db_path, bytes);
                             println!("Downloaded GeoLite2-Country.mmdb");
@@ -747,10 +996,16 @@ pub fn run() {
             let mut ips_engine = IpsEngine::new();
             if !blocked_ips_strings.is_empty() || !custom_rules.is_empty() {
                 // To safely start it, we would apply the filter immediately
-                let _ = ips_engine.start(blocked_ips_strings.clone(), custom_rules.clone(), whitelisted_ips_strings.clone());
+                let _ = ips_engine.start(
+                    blocked_ips_strings.clone(),
+                    custom_rules.clone(),
+                    whitelisted_ips_strings.clone(),
+                );
             }
 
-            let threat_intel_inds = database::get_all_threat_indicators(&db_state.conn.lock().unwrap()).unwrap_or_default();
+            let threat_intel_inds =
+                database::get_all_threat_indicators(&db_state.conn.lock().unwrap())
+                    .unwrap_or_default();
             let mut threat_ips_set = HashSet::new();
             for ind in threat_intel_inds {
                 threat_ips_set.insert(ind.indicator);
@@ -818,17 +1073,46 @@ pub fn run() {
 
 #[tauri::command]
 fn save_snapshot(app: tauri::AppHandle, destination: String) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let dest_path = std::path::PathBuf::from(&destination);
+
+    // Security Fix: Validate destination path against Tauri's FS scope to prevent Arbitrary File Write
+    if !app
+        .try_fs_scope()
+        .ok_or("FS Scope not initialized")?
+        .is_allowed(&dest_path)
+    {
+        return Err("Path not allowed by FS scope".to_string());
+    }
+
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let db_path = app_dir.join("guard_shield.db");
-    std::fs::copy(&db_path, &destination).map_err(|e| format!("Failed to save snapshot: {}", e))?;
+    std::fs::copy(&db_path, &dest_path).map_err(|e| format!("Failed to save snapshot: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
 fn restore_snapshot(app: tauri::AppHandle, source: String) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let source_path = std::path::PathBuf::from(&source);
+
+    // Security Fix: Validate source path against Tauri's FS scope to prevent Arbitrary File Read / Path Traversal
+    if !app
+        .try_fs_scope()
+        .ok_or("FS Scope not initialized")?
+        .is_allowed(&source_path)
+    {
+        return Err("Path not allowed by FS scope".to_string());
+    }
+
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let db_path = app_dir.join("guard_shield.db");
-    std::fs::copy(&source, &db_path).map_err(|e| format!("Failed to restore snapshot: {}", e))?;
+    std::fs::copy(&source_path, &db_path)
+        .map_err(|e| format!("Failed to restore snapshot: {}", e))?;
     app.restart();
 }
 
@@ -844,8 +1128,8 @@ fn get_pdf_report_data(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::IpAddr;
     use std::io::{Error, ErrorKind};
+    use std::net::IpAddr;
 
     struct MockDnsResolver {
         // Maps a host name to list of resolved IpAddrs or an error
@@ -891,7 +1175,10 @@ mod tests {
         };
 
         let result = perform_dns_lookup_impl("example.com".to_string(), &resolver);
-        assert_eq!(result, Ok(vec!["1.2.3.4".to_string(), "5.6.7.8".to_string()]));
+        assert_eq!(
+            result,
+            Ok(vec!["1.2.3.4".to_string(), "5.6.7.8".to_string()])
+        );
     }
 
     #[test]
@@ -929,7 +1216,10 @@ mod tests {
         let mut hosts = std::collections::HashMap::new();
         hosts.insert(
             "fail.com".to_string(),
-            Err(Error::new(ErrorKind::ConnectionRefused, "dns resolution failed")),
+            Err(Error::new(
+                ErrorKind::ConnectionRefused,
+                "dns resolution failed",
+            )),
         );
 
         let resolver = MockDnsResolver {
