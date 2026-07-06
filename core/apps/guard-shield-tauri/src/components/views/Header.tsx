@@ -8,7 +8,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -93,6 +93,11 @@ export function Header() {
     const interval = setInterval(fetchDroppedPackets, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // ⚡ Bolt Optimization: Memoize the count of active rules to prevent O(N) array filtering on every render cycle
+  const activeRulesCount = useMemo(() => {
+    return customRules.filter(r => r.is_active).length;
+  }, [customRules]);
 
   useEffect(() => {
     // Fetch rules periodically or on mount
@@ -267,8 +272,8 @@ export function Header() {
                 className="flex items-center gap-2 px-4 cursor-pointer"
                 variant="outline"
               >
-                {customRules.filter(r => r.is_active).length > 0 
-                  ? `${customRules.filter(r => r.is_active).length} Rules Active` 
+                {activeRulesCount > 0
+                  ? `${activeRulesCount} Rules Active`
                   : "No Rules Active"} <ChevronDown className="size-4" />{" "}
               </Button>
             </DropdownMenuTrigger>
