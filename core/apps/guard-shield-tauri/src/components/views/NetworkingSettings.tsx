@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Separator } from "../ui/separator";
+import { toast } from "sonner";
 
 export default function NetworkingSettings() {
   const [settings, setSettings] = useState<Record<string, string>>({
@@ -26,10 +27,10 @@ export default function NetworkingSettings() {
   const handleSave = async () => {
     try {
       await invoke("save_settings", { settings });
-      alert("Networking settings saved successfully.");
+      toast.success("Networking settings saved successfully.");
     } catch (e) {
       console.error("Failed to save settings", e);
-      alert("Error: " + e);
+      toast.error("Failed to save networking settings.");
     }
   };
 
