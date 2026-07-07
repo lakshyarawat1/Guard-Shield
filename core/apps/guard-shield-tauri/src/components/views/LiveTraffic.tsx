@@ -158,11 +158,24 @@ export default function LiveTraffic() {
     // Performance improvement: Memoize filtering to prevent O(n) operation on every render
     // especially important when packet array grows up to 10000 items
     // ⚡ Bolt: Use debounced filter states to prevent lag during rapid typing
+    // ⚡ Bolt: Pre-calculate the target protocol number outside the filter loop
+    // This turns an O(n) object lookup and number cast into an O(1) string comparison
+    let targetProtoNum: string | null = null;
+    if (filterProto !== "All") {
+      const entry = Object.entries(protocolNames).find(([_, name]) => name === filterProto);
+      if (entry) targetProtoNum = entry[0];
+    }
+
     return packets.filter((p) => {
       if (filterProto !== "All") {
         const pNum = p.ip_proto?.[0];
-        const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
-        if (pName !== filterProto) return false;
+        if (targetProtoNum) {
+           if (String(pNum) !== targetProtoNum) return false;
+        } else {
+           // Fallback for custom protocols not in constants
+           const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
+           if (pName !== filterProto) return false;
+        }
       }
       if (debouncedFilterSrcIp && p.ip_src?.[0] && !p.ip_src[0].includes(debouncedFilterSrcIp)) return false;
       if (debouncedFilterDstIp && p.ip_dst?.[0] && !p.ip_dst[0].includes(debouncedFilterDstIp)) return false;
