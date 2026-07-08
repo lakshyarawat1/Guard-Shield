@@ -21,3 +21,7 @@
 ## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
 **Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
 **Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
+
+## 2024-05-18 - React Strict Mode Array Mutation Bug in State Updaters
+**Learning:** Using array mutation methods like `.reverse()` directly on payloads inside a React state updater (`setPackets(prev => [...event.payload.reverse(), ...prev])`) causes subtle bugs. In Strict Mode, React intentionally double-invokes the state updater. This mutates the underlying `event.payload` array twice, causing it to reverse and then reverse back to its original order, breaking the intended sorting entirely while leaving no trace in production.
+**Action:** When extracting data from buffers or payloads inside state updaters, always slice or copy the array *before* applying mutating methods like `.reverse()`: `const sorted = [...buffer.slice().reverse(), ...prev]`. Even better, clear and extract the buffer outside the state updater to maintain absolute purity.

@@ -99,10 +99,16 @@ export default function AnalyticsDashboard() {
 
     const interval = setInterval(() => {
       const now = Date.now();
+
+      // ⚡ Bolt Optimization: Clear external variables before state updater
+      // to maintain React purity rule (no external mutation inside state updater function)
+      const pkts = packetCountInSec;
+      const alts = alertCountInSec;
+      packetCountInSec = 0;
+      alertCountInSec = 0;
+
       setTrafficHistory(prev => {
-        const next = [...prev, { time: now, pkts: packetCountInSec, alerts: alertCountInSec }];
-        packetCountInSec = 0;
-        alertCountInSec = 0;
+        const next = [...prev, { time: now, pkts: pkts, alerts: alts }];
         // Keep up to 1 hour (3600 points) to prevent infinite memory growth
         if (next.length > 3600) {
           return next.slice(next.length - 3600);
