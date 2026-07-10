@@ -9,7 +9,7 @@ import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
 import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { listen } from "@tauri-apps/api/event";
@@ -128,6 +128,10 @@ export default function LiveTraffic() {
     fetchInterfacesAndHistory();
   }, []);
 
+  // ⚡ Bolt: Use a mutable ref buffer to batch incoming packets and flush to React state via setInterval
+  // This prevents the main thread from being blocked by synchronous React state updates for every packet batch.
+  const packetBufferRef = useRef<PacketType[]>([]);
+
   useEffect(() => {
     let unlisten: () => void;
 
@@ -135,11 +139,8 @@ export default function LiveTraffic() {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          setPackets((prev) => {
-            // Keep last 10000 packets for performance
-            const newPackets = [...event.payload.reverse(), ...prev];
-            return newPackets.slice(0, 10000);
-          });
+          // Push to buffer instead of calling setPackets directly
+          packetBufferRef.current.push(...event.payload);
         });
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
@@ -149,8 +150,24 @@ export default function LiveTraffic() {
 
     setupCapture();
 
+    const flushInterval = setInterval(() => {
+      if (packetBufferRef.current.length > 0) {
+        // Copy and reverse buffer to avoid mutating array inside state updater (Strict Mode safe)
+        const bufferedPackets = [...packetBufferRef.current].reverse();
+        // Clear buffer
+        packetBufferRef.current = [];
+
+        setPackets((prev) => {
+          // Keep last 10000 packets for performance
+          const newPackets = [...bufferedPackets, ...prev];
+          return newPackets.slice(0, 10000);
+        });
+      }
+    }, 500);
+
     return () => {
       if (unlisten) unlisten();
+      clearInterval(flushInterval);
     };
   }, []);
 

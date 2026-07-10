@@ -21,3 +21,6 @@
 ## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
 **Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
 **Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
+## 2025-02-28 - Unnecessary React re-renders on rapid async events
+**Learning:** High-frequency events (like `listen` payloads from Tauri) connected directly to React `useState` updater functions cause significant CPU overhead and UI blocking as React tries to re-render synchronously for every event.
+**Action:** Always decouple rapid external events from React state by buffering updates into a mutable `useRef` array and flushing to state on a `setInterval`.
