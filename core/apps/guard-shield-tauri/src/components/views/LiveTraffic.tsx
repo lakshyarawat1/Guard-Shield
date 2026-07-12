@@ -9,7 +9,7 @@ import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
 import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { listen } from "@tauri-apps/api/event";
@@ -128,6 +128,8 @@ export default function LiveTraffic() {
     fetchInterfacesAndHistory();
   }, []);
 
+  const packetBufferRef = useRef<PacketType[]>([]);
+
   useEffect(() => {
     let unlisten: () => void;
 
@@ -135,11 +137,8 @@ export default function LiveTraffic() {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          setPackets((prev) => {
-            // Keep last 10000 packets for performance
-            const newPackets = [...event.payload.reverse(), ...prev];
-            return newPackets.slice(0, 10000);
-          });
+          // Push to buffer instead of setting state directly to prevent excessive re-renders
+          packetBufferRef.current.push(...event.payload);
         });
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
@@ -149,7 +148,27 @@ export default function LiveTraffic() {
 
     setupCapture();
 
+    // ⚡ Bolt: Buffer high-frequency async events and flush them periodically to avoid
+    // blocking the main thread and Strict Mode mutation bugs with arrays
+    const flushInterval = setInterval(() => {
+      if (packetBufferRef.current.length > 0) {
+        // Copy the buffer and clear it immediately
+        const bufferedPackets = packetBufferRef.current.slice();
+        packetBufferRef.current = [];
+
+        // Reverse outside the state updater to keep the updater pure
+        const reversedBatch = bufferedPackets.reverse();
+
+        setPackets((prev) => {
+          // Keep last 10000 packets for performance
+          const newPackets = [...reversedBatch, ...prev];
+          return newPackets.slice(0, 10000);
+        });
+      }
+    }, 1000);
+
     return () => {
+      clearInterval(flushInterval);
       if (unlisten) unlisten();
     };
   }, []);
