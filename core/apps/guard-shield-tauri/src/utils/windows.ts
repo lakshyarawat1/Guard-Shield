@@ -56,3 +56,7 @@ export const openWhoisLookupWindow = async () => {
 export const openNetworkingSettingsWindow = async () => {
   await openOrFocusWindow('networking-settings', '/#/settings/networking', 'Networking Settings', 900, 700);
 };
+
+export const openTeamManagementWindow = async () => {
+  await openOrFocusWindow('team-management', '/#/team-management', 'Team Management', 1000, 750);
+};

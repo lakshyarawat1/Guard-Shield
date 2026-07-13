@@ -7,6 +7,7 @@ use crossbeam_channel::{unbounded, Receiver};
 use packet_capturer::PacketData;
 use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
 use tauri::{AppHandle, Emitter, State, Manager};
+use tauri_plugin_fs::FsExt;
 use ips_engine::IpsEngine;
 use std::collections::HashSet;
 
@@ -818,6 +819,11 @@ pub fn run() {
 
 #[tauri::command]
 fn save_snapshot(app: tauri::AppHandle, destination: String) -> Result<(), String> {
+    let scope = app.try_fs_scope().ok_or("Failed to get fs scope")?;
+    if !scope.is_allowed(&destination) {
+        return Err("Access denied by fs scope".to_string());
+    }
+
     let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let db_path = app_dir.join("guard_shield.db");
     std::fs::copy(&db_path, &destination).map_err(|e| format!("Failed to save snapshot: {}", e))?;
@@ -826,11 +832,15 @@ fn save_snapshot(app: tauri::AppHandle, destination: String) -> Result<(), Strin
 
 #[tauri::command]
 fn restore_snapshot(app: tauri::AppHandle, source: String) -> Result<(), String> {
+    let scope = app.try_fs_scope().ok_or("Failed to get fs scope")?;
+    if !scope.is_allowed(&source) {
+        return Err("Access denied by fs scope".to_string());
+    }
+
     let app_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let db_path = app_dir.join("guard_shield.db");
     std::fs::copy(&source, &db_path).map_err(|e| format!("Failed to restore snapshot: {}", e))?;
     app.restart();
-    Ok(())
 }
 
 #[tauri::command]

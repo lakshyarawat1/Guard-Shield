@@ -21,3 +21,6 @@
 ## 2024-05-18 - [SQLite Subquery Performance]
 **Learning:** Using `NOT IN` with a large subquery result (`SELECT id FROM packets ORDER BY id DESC LIMIT 10000`) forces SQLite to scan checking against the large list, resulting in O(N) performance that degrades significantly as the table grows (~16ms in test with 25k rows).
 **Action:** Replace `id NOT IN (subquery)` with `id <= (SELECT id FROM packets ORDER BY id DESC LIMIT 1 OFFSET 10000)`. The `OFFSET` approach computes a single threshold value in O(log N) time, making the deletion over 40x faster (~0.4ms) and preventing the database bottleneck as traffic increases.
+## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
+**Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
+**Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
