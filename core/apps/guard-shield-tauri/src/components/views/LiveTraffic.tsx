@@ -9,7 +9,7 @@ import Infobar from "./Infobar";
 import Sidebar from "./Sidebar";
 import { protocolNames } from "../../constants/constants";
 import { PacketType } from "../../types/dataTypes";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { listen } from "@tauri-apps/api/event";
@@ -74,6 +74,9 @@ export default function LiveTraffic() {
   const [packets, setPackets] = useState<PacketType[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // ⚡ Bolt: Buffer incoming packets to avoid high-frequency renders
+  const packetBufferRef = useRef<PacketType[]>([]);
+
   const handleBlockIp = async (ip: string) => {
     try {
       await invoke("block_ip", { ip, reason: "Manual Block from Live Traffic" });
@@ -131,15 +134,27 @@ export default function LiveTraffic() {
   useEffect(() => {
     let unlisten: () => void;
 
+    // ⚡ Bolt: Interval to flush packet buffer to state periodically
+    // This batches updates and prevents excessive synchronous re-renders.
+    const flushInterval = setInterval(() => {
+      if (packetBufferRef.current.length > 0) {
+        // Prepare the new items pure from state
+        const newItems = [...packetBufferRef.current].reverse();
+        packetBufferRef.current = [];
+
+        setPackets((prev) => {
+          const newPackets = [...newItems, ...prev];
+          return newPackets.slice(0, 10000);
+        });
+      }
+    }, 1000);
+
     const setupCapture = async () => {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          setPackets((prev) => {
-            // Keep last 10000 packets for performance
-            const newPackets = [...event.payload.reverse(), ...prev];
-            return newPackets.slice(0, 10000);
-          });
+          // Push to buffer instead of directly updating state
+          packetBufferRef.current.push(...event.payload);
         });
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
@@ -150,6 +165,7 @@ export default function LiveTraffic() {
     setupCapture();
 
     return () => {
+      clearInterval(flushInterval);
       if (unlisten) unlisten();
     };
   }, []);
