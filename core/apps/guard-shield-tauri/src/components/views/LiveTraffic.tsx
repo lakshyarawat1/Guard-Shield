@@ -130,16 +130,28 @@ export default function LiveTraffic() {
 
   useEffect(() => {
     let unlisten: () => void;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let packetBuffer: PacketType[] = [];
 
     const setupCapture = async () => {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          setPackets((prev) => {
-            // Keep last 10000 packets for performance
-            const newPackets = [...event.payload.reverse(), ...prev];
-            return newPackets.slice(0, 10000);
-          });
+          packetBuffer = [...event.payload.reverse(), ...packetBuffer];
+
+          if (!timeoutId) {
+            timeoutId = setTimeout(() => {
+              const pendingPackets = [...packetBuffer];
+              packetBuffer = [];
+
+              setPackets((prev) => {
+                // Keep last 10000 packets for performance
+                const newPackets = [...pendingPackets, ...prev];
+                return newPackets.slice(0, 10000);
+              });
+              timeoutId = null;
+            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance with large packet arrays
+          }
         });
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
@@ -151,6 +163,7 @@ export default function LiveTraffic() {
 
     return () => {
       if (unlisten) unlisten();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
