@@ -6,6 +6,7 @@ import { Separator } from "../ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import { useTheme } from "../ThemeProvider";
 import { Paintbrush } from "lucide-react";
+import { toast } from "sonner";
 import { Switch } from "../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
@@ -41,10 +42,10 @@ export default function GeneralSettings() {
   const handleSave = async () => {
     try {
       await invoke("save_settings", { settings });
-      alert("Settings saved successfully.");
+      toast.success("Settings saved successfully.");
     } catch (e) {
       console.error("Failed to save settings", e);
-      alert("Error: " + e);
+      toast.error("Failed to save settings.");
     }
   };
 
@@ -62,10 +63,10 @@ export default function GeneralSettings() {
     try {
       setIsClearing(true);
       await invoke("clear_database");
-      alert("Local logs successfully cleared.");
+      toast.success("Local logs successfully cleared.");
     } catch (e) {
       console.error("Failed to clear local logs", e);
-      alert("Error: " + e);
+      toast.error("Failed to clear local logs.");
     } finally {
       setIsClearing(false);
     }

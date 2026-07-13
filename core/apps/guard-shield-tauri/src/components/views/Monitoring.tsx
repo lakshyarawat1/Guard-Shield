@@ -1,4 +1,4 @@
-import { Clock, XCircle, ArrowUpDown, ArrowDown, ArrowUp, Network, Search, AlertTriangle, ShieldAlert, Activity, ShieldBan, ChevronLeft, ChevronRight } from "lucide-react";
+import { Clock, XCircle, ArrowUpDown, ArrowDown, ArrowUp, Network, Search, AlertTriangle, ShieldAlert, Activity, ShieldBan, ChevronLeft, ChevronRight, MessageSquare, User, CheckCircle2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -28,6 +28,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { HexViewer } from "./HexViewer";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
+import { useUser } from "@clerk/react";
 
 interface AlertData {
   id: number;
@@ -53,6 +54,21 @@ const Monitoring = () => {
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  const { user } = useUser();
+  const [comments, setComments] = useState<{user: string, text: string, time: string}[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [status, setStatus] = useState("Open");
+
+  const handleAddComment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    setComments([
+      ...comments,
+      { user: user?.firstName || "Analyst", text: newComment, time: new Date().toLocaleTimeString() }
+    ]);
+    setNewComment("");
+  };
 
   const [selectedAlert, setSelectedAlert] = useState<AlertData | null>(null);
   const [showOnlyStarred, setShowOnlyStarred] = useState<boolean>(false);
@@ -594,6 +610,71 @@ const Monitoring = () => {
                   <div className="border border-border/50 rounded-md overflow-hidden bg-black/60 shadow-inner">
                     <HexViewer payloadHex={selectedAlert.payload || ""} />
                   </div>
+                </div>
+
+                {/* Status Controls */}
+                <div className="space-y-2 pt-4 border-t border-border/50">
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant={status === "Open" ? "default" : "outline"}
+                      onClick={() => setStatus("Open")}
+                    >
+                      Open
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant={status === "Investigating" ? "secondary" : "outline"}
+                      onClick={() => setStatus("Investigating")}
+                    >
+                      Investigating
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant={status === "Resolved" ? "default" : "outline"}
+                      className={status === "Resolved" ? "bg-green-600 hover:bg-green-700" : ""}
+                      onClick={() => setStatus("Resolved")}
+                    >
+                      <CheckCircle2 className="size-4 mr-1" /> Resolved
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Comments Section */}
+                <div className="border-t border-border/50 pt-4 pb-4">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <MessageSquare className="size-4" /> Investigation Notes
+                  </h3>
+                  
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 mb-4">
+                    {comments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">No notes added yet.</p>
+                    ) : (
+                      comments.map((c, i) => (
+                        <div key={i} className="flex gap-3 bg-muted/30 p-3 rounded-lg">
+                          <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                            <User className="size-4 text-primary" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-sm">{c.user}</span>
+                              <span className="text-xs text-muted-foreground">{c.time}</span>
+                            </div>
+                            <p className="text-sm">{c.text}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <form onSubmit={handleAddComment} className="flex gap-2">
+                    <Input 
+                      value={newComment} 
+                      onChange={(e) => setNewComment(e.target.value)} 
+                      placeholder="Add a note..." 
+                    />
+                    <Button type="submit" size="sm">Post</Button>
+                  </form>
                 </div>
 
               </div>

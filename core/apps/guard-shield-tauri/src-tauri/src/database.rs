@@ -280,7 +280,6 @@ pub fn insert_packet(
     let mut alert = None;
     let proto = p.ip_proto.first().map(|s| s.as_str()).unwrap_or("");
     let mut impact_score = 0.0;
-    let mut severity = String::new();
     let mut port = String::new();
     let mut protocol_str = String::new();
     let mut info = String::new();
@@ -486,7 +485,7 @@ pub fn insert_packet(
 
     if impact_score > 0.0 {
         // Industry Standard CVSS severity mapping
-        severity = if impact_score >= 9.0 {
+        let severity = if impact_score >= 9.0 {
             "Critical".to_string()
         } else if impact_score >= 7.0 {
             "High".to_string()
