@@ -91,6 +91,20 @@ export default function LiveTraffic() {
   const [filterDstIp, setFilterDstIp] = useState<string>("");
   const [filterPort, setFilterPort] = useState<string>("");
 
+  const [debouncedFilterSrcIp, setDebouncedFilterSrcIp] = useState<string>("");
+  const [debouncedFilterDstIp, setDebouncedFilterDstIp] = useState<string>("");
+  const [debouncedFilterPort, setDebouncedFilterPort] = useState<string>("");
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedFilterSrcIp(filterSrcIp);
+      setDebouncedFilterDstIp(filterDstIp);
+      setDebouncedFilterPort(filterPort);
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [filterSrcIp, filterDstIp, filterPort]);
+
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [selectedPacket, setSelectedPacket] = useState<PacketType | null>(null);
 
@@ -116,16 +130,28 @@ export default function LiveTraffic() {
 
   useEffect(() => {
     let unlisten: () => void;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let packetBuffer: PacketType[] = [];
 
     const setupCapture = async () => {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          setPackets((prev) => {
-            // Keep last 10000 packets for performance
-            const newPackets = [...event.payload.reverse(), ...prev];
-            return newPackets.slice(0, 10000);
-          });
+          packetBuffer = [...event.payload.reverse(), ...packetBuffer];
+
+          if (!timeoutId) {
+            timeoutId = setTimeout(() => {
+              const pendingPackets = [...packetBuffer];
+              packetBuffer = [];
+
+              setPackets((prev) => {
+                // Keep last 10000 packets for performance
+                const newPackets = [...pendingPackets, ...prev];
+                return newPackets.slice(0, 10000);
+              });
+              timeoutId = null;
+            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance with large packet arrays
+          }
         });
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
@@ -137,28 +163,30 @@ export default function LiveTraffic() {
 
     return () => {
       if (unlisten) unlisten();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
   const filteredPackets = useMemo(() => {
     // Performance improvement: Memoize filtering to prevent O(n) operation on every render
     // especially important when packet array grows up to 10000 items
+    // ⚡ Bolt: Use debounced filter states to prevent lag during rapid typing
     return packets.filter((p) => {
       if (filterProto !== "All") {
         const pNum = p.ip_proto?.[0];
         const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
         if (pName !== filterProto) return false;
       }
-      if (filterSrcIp && p.ip_src?.[0] && !p.ip_src[0].includes(filterSrcIp)) return false;
-      if (filterDstIp && p.ip_dst?.[0] && !p.ip_dst[0].includes(filterDstIp)) return false;
-      if (filterPort) {
+      if (debouncedFilterSrcIp && p.ip_src?.[0] && !p.ip_src[0].includes(debouncedFilterSrcIp)) return false;
+      if (debouncedFilterDstIp && p.ip_dst?.[0] && !p.ip_dst[0].includes(debouncedFilterDstIp)) return false;
+      if (debouncedFilterPort) {
         const srcP = p.tcp_srcport?.[0] || p.udp_srcport?.[0] || "";
         const dstP = p.tcp_dstport?.[0] || p.udp_dstport?.[0] || "";
-        if (!srcP.includes(filterPort) && !dstP.includes(filterPort)) return false;
+        if (!srcP.includes(debouncedFilterPort) && !dstP.includes(debouncedFilterPort)) return false;
       }
       return true;
     });
-  }, [packets, filterProto, filterSrcIp, filterDstIp, filterPort]);
+  }, [packets, filterProto, debouncedFilterSrcIp, debouncedFilterDstIp, debouncedFilterPort]);
 
   const sortedPackets = useMemo(() => {
     // Performance improvement: Memoize sorting to prevent O(n log n) operation on every render

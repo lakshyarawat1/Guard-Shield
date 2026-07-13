@@ -17,3 +17,13 @@
 ## 2026-06-25 - Prevent O(N) filtering inside render loop
 **Learning:** Found an inline `.filter` array operation running on a large dataset (alerts) inside the React render cycle in `Monitoring.tsx`. This caused O(N) operations on every render, severely impacting performance for large amounts of alerts.
 **Action:** Use `useMemo` and derive metrics (like counts) from pre-existing memoized grouped data structures where possible to change O(N) operations into O(1) lookups.
+
+## 2024-05-18 - [SQLite Subquery Performance]
+**Learning:** Using `NOT IN` with a large subquery result (`SELECT id FROM packets ORDER BY id DESC LIMIT 10000`) forces SQLite to scan checking against the large list, resulting in O(N) performance that degrades significantly as the table grows (~16ms in test with 25k rows).
+**Action:** Replace `id NOT IN (subquery)` with `id <= (SELECT id FROM packets ORDER BY id DESC LIMIT 1 OFFSET 10000)`. The `OFFSET` approach computes a single threshold value in O(log N) time, making the deletion over 40x faster (~0.4ms) and preventing the database bottleneck as traffic increases.
+## 2025-02-28 - Unthrottled State Updates with Large Datasets
+**Learning:** Found a critical performance bottleneck in `LiveTraffic.tsx` where high-frequency events (up to 10 emits/sec from Tauri backend) updated the component state immediately. Because the state contained a large array (up to 10,000 items) that was subsequently filtered and sorted (O(N log N)), updating the state 10 times a second crippled the main thread and caused high CPU usage.
+**Action:** Always buffer and throttle React state updates for high-frequency events (like websockets or IPC listeners) when dealing with large datasets or heavy derived state calculations. A throttle of 500ms (2fps) keeps the UI feeling real-time while drastically reducing main thread blocking.
+## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
+**Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
+**Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
