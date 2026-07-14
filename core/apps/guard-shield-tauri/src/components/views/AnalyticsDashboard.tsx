@@ -79,17 +79,15 @@ export default function AnalyticsDashboard() {
 
     let unlistenFn: (() => void) | undefined;
     let unlistenPackets: (() => void) | undefined;
-    let alertCountInSec = 0;
+
+    // ⚡ Bolt Optimization: Buffer incoming high-frequency events
+    let alertBuffer: AlertData[] = [];
     let packetCountInSec = 0;
 
     const setupListener = async () => {
       unlistenFn = await listen<AlertData>("intrusion-alert", (event) => {
-        alertCountInSec += 1;
-        setAlerts((prev) => [event.payload, ...prev].slice(0, 1000));
-        setStats((prev) => ({
-          total_alerts: prev.total_alerts + 1,
-          last_24h_alerts: prev.last_24h_alerts + 1
-        }));
+        // Collect alerts in buffer instead of triggering state update on every event
+        alertBuffer.push(event.payload);
       });
       unlistenPackets = await listen<any[]>("packets-batch", (event) => {
         packetCountInSec += event.payload.length;
@@ -97,12 +95,31 @@ export default function AnalyticsDashboard() {
     };
     setupListener();
 
+    // ⚡ Bolt Optimization: Flush buffered events to React state periodically (1fps)
     const interval = setInterval(() => {
       const now = Date.now();
+
+      const pendingAlerts = [...alertBuffer];
+      alertBuffer = [];
+      const currentPacketCount = packetCountInSec;
+      packetCountInSec = 0;
+
+      if (pendingAlerts.length > 0) {
+        setAlerts((prev) => {
+           // Important: Safely copy and reverse buffered alerts outside the prev reference to comply with React Strict Mode
+           const newAlerts = [...pendingAlerts.slice().reverse(), ...prev];
+           return newAlerts.slice(0, 1000);
+        });
+
+        setStats((prev) => ({
+          ...prev,
+          total_alerts: prev.total_alerts + pendingAlerts.length,
+          last_24h_alerts: prev.last_24h_alerts + pendingAlerts.length
+        }));
+      }
+
       setTrafficHistory(prev => {
-        const next = [...prev, { time: now, pkts: packetCountInSec, alerts: alertCountInSec }];
-        packetCountInSec = 0;
-        alertCountInSec = 0;
+        const next = [...prev, { time: now, pkts: currentPacketCount, alerts: pendingAlerts.length }];
         // Keep up to 1 hour (3600 points) to prevent infinite memory growth
         if (next.length > 3600) {
           return next.slice(next.length - 3600);
