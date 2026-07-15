@@ -196,22 +196,36 @@ const Monitoring = () => {
     };
     fetchTelemetry();
 
+    let unlistenFn: (() => void) | undefined;
+    let alertBuffer: AlertData[] = [];
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     const setupListener = async () => {
       const unlisten = await listen<AlertData>("intrusion-alert", (event) => {
-          setAlerts((prev) => [event.payload, ...prev].slice(0, 500));
-          setStats((prev) => ({
-              total_alerts: prev.total_alerts + 1,
-              last_24h_alerts: prev.last_24h_alerts + 1
-          }));
+          alertBuffer.push(event.payload);
+
+          if (!timeoutId) {
+            timeoutId = setTimeout(() => {
+              const pendingAlerts = [...alertBuffer];
+              alertBuffer = [];
+
+              setAlerts((prev) => [...pendingAlerts.reverse(), ...prev].slice(0, 500));
+              setStats((prev) => ({
+                  total_alerts: prev.total_alerts + pendingAlerts.length,
+                  last_24h_alerts: prev.last_24h_alerts + pendingAlerts.length
+              }));
+              timeoutId = null;
+            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance during high-frequency alerts
+          }
       });
       return unlisten;
     };
     
-    let unlistenFn: (() => void) | undefined;
     setupListener().then(fn => unlistenFn = fn);
 
     return () => {
       if (unlistenFn) unlistenFn();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 

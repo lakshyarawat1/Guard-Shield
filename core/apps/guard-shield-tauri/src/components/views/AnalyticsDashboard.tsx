@@ -82,14 +82,27 @@ export default function AnalyticsDashboard() {
     let alertCountInSec = 0;
     let packetCountInSec = 0;
 
+    let alertBuffer: AlertData[] = [];
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     const setupListener = async () => {
       unlistenFn = await listen<AlertData>("intrusion-alert", (event) => {
         alertCountInSec += 1;
-        setAlerts((prev) => [event.payload, ...prev].slice(0, 1000));
-        setStats((prev) => ({
-          total_alerts: prev.total_alerts + 1,
-          last_24h_alerts: prev.last_24h_alerts + 1
-        }));
+        alertBuffer.push(event.payload);
+
+        if (!timeoutId) {
+          timeoutId = setTimeout(() => {
+            const pendingAlerts = [...alertBuffer];
+            alertBuffer = [];
+
+            setAlerts((prev) => [...pendingAlerts.reverse(), ...prev].slice(0, 1000));
+            setStats((prev) => ({
+              total_alerts: prev.total_alerts + pendingAlerts.length,
+              last_24h_alerts: prev.last_24h_alerts + pendingAlerts.length
+            }));
+            timeoutId = null;
+          }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance during high-frequency alerts
+        }
       });
       unlistenPackets = await listen<any[]>("packets-batch", (event) => {
         packetCountInSec += event.payload.length;
@@ -114,6 +127,7 @@ export default function AnalyticsDashboard() {
     return () => {
       if (unlistenFn) unlistenFn();
       if (unlistenPackets) unlistenPackets();
+      if (timeoutId) clearTimeout(timeoutId);
       clearInterval(interval);
     };
   }, []);

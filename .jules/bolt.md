@@ -27,3 +27,6 @@
 ## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
 **Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
 **Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
+## 2026-07-15 - Unthrottled State Updates in Dashboards
+**Learning:** Found a performance bottleneck in real-time dashboards (`AnalyticsDashboard`, `Monitoring`, `SuspiciousTraffic`) where high-frequency events (`intrusion-alert`) triggered immediate state updates, causing excessive re-renders and CPU spikes.
+**Action:** Always buffer and throttle React state updates for high-frequency streams using a `setTimeout` buffer. Batch updates and correctly maintain the reverse chronological order before flushing to the state.
