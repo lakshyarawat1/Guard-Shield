@@ -133,28 +133,14 @@ export default function LiveTraffic() {
     let unlisten: () => void;
     let intervalId: ReturnType<typeof setInterval>;
     let isMounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let packetBuffer: PacketType[] = [];
 
     const setupCapture = async () => {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          packetBuffer = [...event.payload.reverse(), ...packetBuffer];
-
-          if (!timeoutId) {
-            timeoutId = setTimeout(() => {
-              const pendingPackets = [...packetBuffer];
-              packetBuffer = [];
-
-              setPackets((prev) => {
-                // Keep last 10000 packets for performance
-                const newPackets = [...pendingPackets, ...prev];
-                return newPackets.slice(0, 10000);
-              });
-              timeoutId = null;
-            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance with large packet arrays
-          }
+          // Push items into the bufferRef to decouple from component re-renders
+          const reversedPayload = [...event.payload].reverse();
+          bufferRef.current = [...reversedPayload, ...bufferRef.current];
         });
 
         intervalId = setInterval(() => {
@@ -162,14 +148,14 @@ export default function LiveTraffic() {
             // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
             // and flush them periodically. This prevents excessive synchronous React re-renders
             // when handling high-frequency live network traffic.
-            const itemsToAdd = bufferRef.current.splice(0, bufferRef.current.length).reverse();
+            const itemsToAdd = bufferRef.current.splice(0, bufferRef.current.length);
             setPackets((prev) => {
               // Keep last 10000 packets for performance
               const newPackets = [...itemsToAdd, ...prev];
               return newPackets.slice(0, 10000);
             });
           }
-        }, 1000);
+        }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
         setError(String(e));
@@ -185,7 +171,6 @@ export default function LiveTraffic() {
       isMounted = false;
       if (intervalId) clearInterval(intervalId);
       if (unlisten) unlisten();
-      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
