@@ -133,43 +133,43 @@ export default function LiveTraffic() {
     let unlisten: () => void;
     let intervalId: ReturnType<typeof setInterval>;
     let isMounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let packetBuffer: PacketType[] = [];
 
     const setupCapture = async () => {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          packetBuffer = [...event.payload.reverse(), ...packetBuffer];
+          // Accumulate packets into the buffer ref instead of triggering state directly.
+          // Event payload contains packets in chronological order (oldest first).
+          // We want newer packets at the beginning of the list, so we reverse the payload
+          // and prepend it to the buffer (or conceptually, add to the buffer).
 
-          if (!timeoutId) {
-            timeoutId = setTimeout(() => {
-              const pendingPackets = [...packetBuffer];
-              packetBuffer = [];
+          // Using push and manual spread to avoid recursive function call issues
+          // and state mutation. We slice the payload to create a new array and reverse it.
+          const newPackets = event.payload.slice().reverse();
+          bufferRef.current = [...newPackets, ...bufferRef.current];
 
-              setPackets((prev) => {
-                // Keep last 10000 packets for performance
-                const newPackets = [...pendingPackets, ...prev];
-                return newPackets.slice(0, 10000);
-              });
-              timeoutId = null;
-            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance with large packet arrays
+          // Cap the buffer size to avoid memory explosion before flush
+          if (bufferRef.current.length > 20000) {
+              bufferRef.current = bufferRef.current.slice(0, 20000);
           }
         });
 
+        // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
+        // and flush them periodically. This prevents excessive synchronous React re-renders
+        // when handling high-frequency live network traffic.
         intervalId = setInterval(() => {
           if (bufferRef.current.length > 0) {
-            // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
-            // and flush them periodically. This prevents excessive synchronous React re-renders
-            // when handling high-frequency live network traffic.
-            const itemsToAdd = bufferRef.current.splice(0, bufferRef.current.length).reverse();
+            // Make a copy and clear the ref before updating state to stay pure
+            const itemsToAdd = bufferRef.current.slice();
+            bufferRef.current = [];
+
             setPackets((prev) => {
               // Keep last 10000 packets for performance
               const newPackets = [...itemsToAdd, ...prev];
               return newPackets.slice(0, 10000);
             });
           }
-        }, 1000);
+        }, 500); // Throttle React state updates to 2fps for better performance
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
         setError(String(e));
@@ -185,7 +185,6 @@ export default function LiveTraffic() {
       isMounted = false;
       if (intervalId) clearInterval(intervalId);
       if (unlisten) unlisten();
-      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
