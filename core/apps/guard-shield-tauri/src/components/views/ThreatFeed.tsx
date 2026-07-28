@@ -57,7 +57,7 @@ const ThreatFeed = () => {
       setLastSyncTime(new Date());
       toast.success(`Successfully synchronized ${data.length} indicators.`);
     } catch (e) {
-      toast.error("Sync failed", { description: String(e) });
+      toast.error("Sync failed", { description: "An internal error occurred." });
     } finally {
       setIsSyncing(false);
     }
@@ -68,7 +68,7 @@ const ThreatFeed = () => {
       await invoke("block_ip", { ip, reason: "Added from Threat Feed Intelligence" });
       toast.success(`Successfully blocked IP: ${ip}`);
     } catch (e) {
-      toast.error(`Failed to block IP: ${ip}`, { description: String(e) });
+      toast.error(`Failed to block IP: ${ip}`, { description: "An internal error occurred." });
     }
   };
 

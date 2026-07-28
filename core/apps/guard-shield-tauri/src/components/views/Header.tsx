@@ -85,7 +85,8 @@ export function Header() {
         const count: number = await invoke("get_dropped_packets");
         setDroppedPackets(count);
       } catch (e: any) {
-        toast.error(`Capture Error: ${e.toString()}`);
+        console.error("Capture Error:", e);
+        toast.error("Failed to retrieve packet capture details");
       }
     };
     
@@ -105,7 +106,7 @@ export function Header() {
       try {
         const rules = await invoke<{id: number, name: string, is_active: boolean}[]>("fetch_custom_rules");
         setCustomRules(rules);
-      } catch (e) { console.error("Failed to fetch custom rules in header", e); }
+      } catch (e) { console.error("Failed to fetch custom rules in header:", e); }
     };
     
     fetchRules();
@@ -205,7 +206,8 @@ export function Header() {
           await invoke("start_packet_capture", { interfaceName: iface, bpfFilter: "" });
         }
       } catch (e: any) {
-        toast.error(`Capture Error: ${e.toString()}`);
+        console.error("Capture Error:", e);
+        toast.error("Failed to start packet capture. Please check permissions or settings.");
         setIsCapturing(false);
         localStorage.setItem("guard_shield_is_capturing", "false");
       }
@@ -317,7 +319,10 @@ export function Header() {
                 localStorage.setItem("guard_shield_interface", val);
                 if (isCapturing) {
                   invoke("stop_packet_capture").then(() => {
-                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch((e: any) => toast.error(e.toString()));
+                    invoke("start_packet_capture", { interfaceName: val, bpfFilter: "" }).catch((e: any) => {
+                      console.error("Capture interface change error:", e);
+                      toast.error("Failed to restart packet capture on new interface");
+                    });
                   });
                 }
               }}>
