@@ -133,28 +133,16 @@ export default function LiveTraffic() {
     let unlisten: () => void;
     let intervalId: ReturnType<typeof setInterval>;
     let isMounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let packetBuffer: PacketType[] = [];
 
     const setupCapture = async () => {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          packetBuffer = [...event.payload.reverse(), ...packetBuffer];
-
-          if (!timeoutId) {
-            timeoutId = setTimeout(() => {
-              const pendingPackets = [...packetBuffer];
-              packetBuffer = [];
-
-              setPackets((prev) => {
-                // Keep last 10000 packets for performance
-                const newPackets = [...pendingPackets, ...prev];
-                return newPackets.slice(0, 10000);
-              });
-              timeoutId = null;
-            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance with large packet arrays
-          }
+          // ⚡ Bolt Optimization: Buffer incoming packets into a ref directly.
+          // Spreading arrays inside high-frequency listeners causes high CPU load,
+          // and triggering state changes multiple times a second is an anti-pattern
+          // when dealing with arrays of 10k items.
+          bufferRef.current.push(...event.payload);
         });
 
         intervalId = setInterval(() => {
@@ -185,7 +173,6 @@ export default function LiveTraffic() {
       isMounted = false;
       if (intervalId) clearInterval(intervalId);
       if (unlisten) unlisten();
-      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 

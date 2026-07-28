@@ -30,3 +30,6 @@
 ## 2025-02-28 - Buffer high-frequency async events from Tauri
 **Learning:** In `LiveTraffic.tsx`, directly calling `setPackets` synchronously on every incoming batch from the `listen` Tauri event causes excessive React re-renders, especially under high network load.
 **Action:** Use a mutable `useRef` array to buffer incoming asynchronous events (like `listen` payloads) and flush the buffer to React state on a fixed `setInterval` (e.g. 1000ms).
+## 2025-02-28 - Unnecessary array spreading in high-frequency events
+**Learning:** Found an anti-pattern in `LiveTraffic.tsx` where an array was spread inside a high frequency event listener `packetBuffer = [...event.payload.reverse(), ...packetBuffer];` which causes high CPU load.
+**Action:** When handling high-frequency network events (like packet batching) in the React frontend, buffer incoming payloads into a mutable `useRef` array using `.push(...)` (avoiding O(N^2) array spreading).
