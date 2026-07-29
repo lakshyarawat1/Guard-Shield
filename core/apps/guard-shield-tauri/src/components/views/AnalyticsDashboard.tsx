@@ -159,10 +159,12 @@ export default function AnalyticsDashboard() {
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
   }, [alerts]);
 
-  // ⚡ Bolt Optimization: Memoize criticalCount calculation to prevent unnecessary O(n) array filter on every render.
+  // ⚡ Bolt Optimization: Derive criticalCount from the already memoized severityData array.
+  // This turns an O(N) filter operation over the large alerts array into an O(1) lookup on the small severityData array.
   const criticalCount = useMemo(() => {
-    return alerts.filter(a => a.severity === "Critical").length;
-  }, [alerts]);
+    const criticalData = severityData.find(s => s.name === "Critical");
+    return criticalData ? criticalData.value : 0;
+  }, [severityData]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
