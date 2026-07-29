@@ -5,14 +5,7 @@ pub mod threat_feed;
 
 use crossbeam_channel::{unbounded, Receiver};
 use ips_engine::IpsEngine;
-use packet_capturer::PacketData;
 use std::collections::HashSet;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex, RwLock,
-};
-use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_fs::FsExt;
 
 struct AppState {
     capture_flag: Mutex<Option<Arc<AtomicBool>>>,

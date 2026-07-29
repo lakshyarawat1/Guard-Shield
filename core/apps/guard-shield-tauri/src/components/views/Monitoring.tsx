@@ -201,6 +201,7 @@ const Monitoring = () => {
     const setupListener = async () => {
       const unlisten = await listen<AlertData>("intrusion-alert", (event) => {
           alertsBufferRef.current.push(event.payload);
+        alertsBufferRef.current.push(event.payload);
       });
       return unlisten;
     };
@@ -208,18 +209,21 @@ const Monitoring = () => {
     let unlistenFn: (() => void) | undefined;
     setupListener().then(fn => unlistenFn = fn);
 
-    // Periodically flush the buffered alerts to React state
+    // ⚡ Bolt Optimization: Batch process high-frequency alert updates via interval
+    // This prevents main thread blocking on rapid sequential updates
     const flushInterval = setInterval(() => {
       if (alertsBufferRef.current.length > 0) {
-        // Copy the buffer, then clear it to avoid missing concurrent updates
-        const newAlerts = [...alertsBufferRef.current].reverse();
-        const numNewAlerts = newAlerts.length;
+        const newAlerts = [...alertsBufferRef.current];
         alertsBufferRef.current = [];
 
-        setAlerts((prev) => [...newAlerts, ...prev].slice(0, 500));
+        setAlerts((prev) => {
+          const merged = [...newAlerts.reverse(), ...prev];
+          return merged.slice(0, 500);
+        });
+
         setStats((prev) => ({
-          total_alerts: prev.total_alerts + numNewAlerts,
-          last_24h_alerts: prev.last_24h_alerts + numNewAlerts
+          total_alerts: prev.total_alerts + newAlerts.length,
+          last_24h_alerts: prev.last_24h_alerts + newAlerts.length
         }));
       }
     }, 1000);
