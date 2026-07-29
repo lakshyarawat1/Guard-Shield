@@ -33,3 +33,9 @@
 ## 2025-02-28 - Unnecessary array spreading in high-frequency events
 **Learning:** Found an anti-pattern in `LiveTraffic.tsx` where an array was spread inside a high frequency event listener `packetBuffer = [...event.payload.reverse(), ...packetBuffer];` which causes high CPU load.
 **Action:** When handling high-frequency network events (like packet batching) in the React frontend, buffer incoming payloads into a mutable `useRef` array using `.push(...)` (avoiding O(N^2) array spreading).
+## 2024-05-18 - Avoid O(N^2) Array Spread in React Event Listeners
+**Learning:** In high-frequency Tauri event listeners (like live network traffic), using array spread syntax (`[...new, ...old]`) directly inside the listener callback degrades to O(N^2) time complexity and causes UI freezing before debounced state updates trigger.
+**Action:** Always append high-frequency event payloads to a mutable `useRef` array using `.push(...)`, maintain strict bounds with `.slice`, and only perform array spread/copy operations periodically inside a flushing `setInterval` to batch state updates.
+## 2025-06-25 - Unthrottled State Updates on Monitoring Dashboard
+**Learning:** High-frequency backend events (like `intrusion-alert`) that directly update state triggering heavy O(N) filtering operations (`useMemo` arrays) cause the main React thread to lock up.
+**Action:** When a listener emits data rapidly and the resulting UI operation is heavy, buffer the events locally using a `useRef` array and dispatch updates via `setInterval` to batch them. This prevents main thread blockage.
