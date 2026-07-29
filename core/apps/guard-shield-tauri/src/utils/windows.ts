@@ -1,4 +1,5 @@
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { toast } from "sonner";
 
 async function openOrFocusWindow(
   label: string,
@@ -25,11 +26,11 @@ async function openOrFocusWindow(
     });
     win.once('tauri://error', function (e) {
       console.error(`Tauri Error for ${label}:`, e);
-      alert(`Failed to open window due to an internal error.`);
+      toast.error(`Failed to open window due to an internal error.`);
     });
   } catch (e: any) {
     console.error(`Error opening window ${label}:`, e);
-    alert(`Failed to open window.`);
+    toast.error(`Failed to open window.`);
   }
 }
 

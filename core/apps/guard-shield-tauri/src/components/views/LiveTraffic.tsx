@@ -138,20 +138,20 @@ export default function LiveTraffic() {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          const newItems = [...event.payload].reverse();
-          bufferRef.current = [...newItems, ...bufferRef.current];
-
+          // ⚡ Bolt Optimization: Avoid O(N^2) array spreading inside listener
+          // Push new packets directly to a mutable ref buffer and keep strict limit
+          bufferRef.current.push(...event.payload);
           if (bufferRef.current.length > 10000) {
-            bufferRef.current = bufferRef.current.slice(0, 10000);
+            bufferRef.current = bufferRef.current.slice(-10000);
           }
         });
 
         intervalId = setInterval(() => {
           if (bufferRef.current.length > 0) {
-            // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
-            // and flush them periodically. This prevents excessive synchronous React re-renders
+            // ⚡ Bolt Optimization: Flush incoming packets from Tauri `listen` events periodically
+            // This batches updates and prevents excessive synchronous React re-renders
             // when handling high-frequency live network traffic.
-            const itemsToAdd = [...bufferRef.current];
+            const itemsToAdd = [...bufferRef.current].reverse();
             bufferRef.current = [];
 
             setPackets((prev) => {
