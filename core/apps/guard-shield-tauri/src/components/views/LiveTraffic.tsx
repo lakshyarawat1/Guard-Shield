@@ -146,6 +146,9 @@ export default function LiveTraffic() {
           }
         });
 
+        // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
+        // and flush them periodically. This prevents excessive synchronous React re-renders
+        // when handling high-frequency live network traffic.
         intervalId = setInterval(() => {
           if (bufferRef.current.length > 0) {
             // ⚡ Bolt Optimization: Flush incoming packets from Tauri `listen` events periodically
