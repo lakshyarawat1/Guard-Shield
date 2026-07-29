@@ -67,20 +67,36 @@ export default function SuspiciousTraffic() {
     };
     fetchAlerts();
 
+    let unlistenFn: (() => void) | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let alertBuffer: AlertData[] = [];
+
     const setupListener = async () => {
-      const unlisten = await listen<AlertData>("intrusion-alert", (event) => {
+      unlistenFn = await listen<AlertData>("intrusion-alert", (event) => {
         if (event.payload.severity === "Critical" || event.payload.severity === "High") {
-          setAlerts((prev) => [event.payload, ...prev].slice(0, 500));
+          alertBuffer.push(event.payload);
+
+          if (!timeoutId) {
+            timeoutId = setTimeout(() => {
+              const pendingAlerts = [...alertBuffer];
+              alertBuffer = [];
+
+              setAlerts((prev) => {
+                const newAlerts = [...pendingAlerts.reverse(), ...prev];
+                return newAlerts.slice(0, 500);
+              });
+              timeoutId = null;
+            }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance
+          }
         }
       });
-      return unlisten;
     };
     
-    let unlistenFn: (() => void) | undefined;
-    setupListener().then(fn => unlistenFn = fn);
+    setupListener();
 
     return () => {
       if (unlistenFn) unlistenFn();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 

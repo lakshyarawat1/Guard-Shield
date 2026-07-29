@@ -27,6 +27,9 @@
 ## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
 **Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
 **Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
+## 2025-02-28 - Unthrottled State Updates in SuspiciousTraffic
+**Learning:** Found another instance of high-frequency events (up to 10 emits/sec) updating the state immediately in `SuspiciousTraffic.tsx`. This causes main thread blocking because a large array is pushed to state on every event trigger, which then triggers expensive React re-renders and re-computations of aggregations (top IPs, threat types, etc).
+**Action:** Always buffer and throttle React state updates for high-frequency events (like websockets or IPC listeners) when dealing with datasets that update aggregations or complex UI states. A throttle of 500ms (2fps) keeps the UI feeling real-time while drastically reducing main thread blocking.
 ## 2025-02-28 - Buffer high-frequency async events from Tauri
 **Learning:** In `LiveTraffic.tsx`, directly calling `setPackets` synchronously on every incoming batch from the `listen` Tauri event causes excessive React re-renders, especially under high network load.
 **Action:** Use a mutable `useRef` array to buffer incoming asynchronous events (like `listen` payloads) and flush the buffer to React state on a fixed `setInterval` (e.g. 1000ms).
