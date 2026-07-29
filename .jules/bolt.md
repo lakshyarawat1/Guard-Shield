@@ -27,6 +27,12 @@
 ## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
 **Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
 **Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
+## 2025-02-28 - Buffer high-frequency async events from Tauri
+**Learning:** In `LiveTraffic.tsx`, directly calling `setPackets` synchronously on every incoming batch from the `listen` Tauri event causes excessive React re-renders, especially under high network load.
+**Action:** Use a mutable `useRef` array to buffer incoming asynchronous events (like `listen` payloads) and flush the buffer to React state on a fixed `setInterval` (e.g. 1000ms).
+## 2024-05-18 - Avoid O(N^2) Array Spread in React Event Listeners
+**Learning:** In high-frequency Tauri event listeners (like live network traffic), using array spread syntax (`[...new, ...old]`) directly inside the listener callback degrades to O(N^2) time complexity and causes UI freezing before debounced state updates trigger.
+**Action:** Always append high-frequency event payloads to a mutable `useRef` array using `.push(...)`, maintain strict bounds with `.slice`, and only perform array spread/copy operations periodically inside a flushing `setInterval` to batch state updates.
 ## 2025-06-25 - Unthrottled State Updates on Monitoring Dashboard
 **Learning:** High-frequency backend events (like `intrusion-alert`) that directly update state triggering heavy O(N) filtering operations (`useMemo` arrays) cause the main React thread to lock up.
 **Action:** When a listener emits data rapidly and the resulting UI operation is heavy, buffer the events locally using a `useRef` array and dispatch updates via `setInterval` to batch them. This prevents main thread blockage.
