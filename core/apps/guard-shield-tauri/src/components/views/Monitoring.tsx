@@ -23,7 +23,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "../../components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { HexViewer } from "./HexViewer";
@@ -52,6 +52,7 @@ interface TelemetryStats {
 const Monitoring = () => {
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
+  const alertsBufferRef = useRef<AlertData[]>([]);
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -198,11 +199,7 @@ const Monitoring = () => {
 
     const setupListener = async () => {
       const unlisten = await listen<AlertData>("intrusion-alert", (event) => {
-          setAlerts((prev) => [event.payload, ...prev].slice(0, 500));
-          setStats((prev) => ({
-              total_alerts: prev.total_alerts + 1,
-              last_24h_alerts: prev.last_24h_alerts + 1
-          }));
+        alertsBufferRef.current.push(event.payload);
       });
       return unlisten;
     };
@@ -210,8 +207,28 @@ const Monitoring = () => {
     let unlistenFn: (() => void) | undefined;
     setupListener().then(fn => unlistenFn = fn);
 
+    // ⚡ Bolt Optimization: Batch process high-frequency alert updates via interval
+    // This prevents main thread blocking on rapid sequential updates
+    const flushInterval = setInterval(() => {
+      if (alertsBufferRef.current.length > 0) {
+        const newAlerts = [...alertsBufferRef.current];
+        alertsBufferRef.current = [];
+
+        setAlerts((prev) => {
+          const merged = [...newAlerts.reverse(), ...prev];
+          return merged.slice(0, 500);
+        });
+
+        setStats((prev) => ({
+          total_alerts: prev.total_alerts + newAlerts.length,
+          last_24h_alerts: prev.last_24h_alerts + newAlerts.length
+        }));
+      }
+    }, 1000);
+
     return () => {
       if (unlistenFn) unlistenFn();
+      clearInterval(flushInterval);
     };
   }, []);
 
