@@ -30,6 +30,9 @@
 ## 2025-02-28 - Buffer high-frequency async events from Tauri
 **Learning:** In `LiveTraffic.tsx`, directly calling `setPackets` synchronously on every incoming batch from the `listen` Tauri event causes excessive React re-renders, especially under high network load.
 **Action:** Use a mutable `useRef` array to buffer incoming asynchronous events (like `listen` payloads) and flush the buffer to React state on a fixed `setInterval` (e.g. 1000ms).
+## 2025-02-28 - Strict Purity in React State Updater Functions
+**Learning:** Found a critical bug where React state updater functions (e.g., `setPackets(prev => {...})`) were mutating arrays inside the callback (using `.reverse()`). With React's Strict Mode, state updaters are double-invoked in development, which causes erratic behavior if they are not strictly pure.
+**Action:** Never mutate arrays (e.g. using `.reverse()`), buffers, refs, or external variables inside state updater functions. Explicitly copy arrays via slice and perform all mutations/clearing of external variables immediately before calling the state updater.
 ## 2024-07-25 - React Ref Memory Explosion
 
 **Learning:** Buffering Tauri events into a `useRef` array without bounding its size can cause severe memory spikes (OOM errors) if the flush interval (e.g., `setInterval`) is delayed by the main thread during high-traffic spikes.
