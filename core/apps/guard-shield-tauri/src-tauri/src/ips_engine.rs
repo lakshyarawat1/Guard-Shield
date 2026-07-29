@@ -1,7 +1,10 @@
-use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
-use std::net::IpAddr;
-use windivert::{WinDivert, prelude::WinDivertFlags};
 use crate::database::CustomRule;
+use std::net::IpAddr;
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc,
+};
+use windivert::{prelude::WinDivertFlags, WinDivert};
 
 pub struct IpsEngine {
     is_running: Arc<AtomicBool>,
@@ -22,7 +25,12 @@ impl IpsEngine {
         self.dropped_count.load(Ordering::Relaxed)
     }
 
-    pub fn start(&mut self, blocked_ips: Vec<String>, drop_rules: Vec<CustomRule>, whitelisted_ips: Vec<String>) -> Result<(), String> {
+    pub fn start(
+        &mut self,
+        blocked_ips: Vec<String>,
+        drop_rules: Vec<CustomRule>,
+        whitelisted_ips: Vec<String>,
+    ) -> Result<(), String> {
         self.stop();
 
         self.current_ips = blocked_ips.clone();
@@ -37,11 +45,14 @@ impl IpsEngine {
 
         // Build the WinDivert filter string
         let mut filters = Vec::new();
-        
+
         // 1. IP Auto-blocks
         for ip in blocked_ips {
             if let Ok(parsed_ip) = ip.parse::<IpAddr>() {
-                filters.push(format!("(ip.SrcAddr == '{}' or ip.DstAddr == '{}')", parsed_ip, parsed_ip));
+                filters.push(format!(
+                    "(ip.SrcAddr == '{}' or ip.DstAddr == '{}')",
+                    parsed_ip, parsed_ip
+                ));
             } else {
                 eprintln!("Invalid blocked IP skipped: {}", ip);
             }
@@ -54,7 +65,7 @@ impl IpsEngine {
             }
 
             let mut rule_filters = Vec::new();
-            
+
             // Protocol matching
             if rule.protocol != "Any" {
                 let proto = rule.protocol.to_lowercase();
@@ -103,7 +114,10 @@ impl IpsEngine {
                             rule_filters.push(format!("udp.SrcPort == {}", parsed_port));
                         } else if rule.protocol == "Any" {
                             // If protocol is Any, but port is specified, WinDivert needs us to specify it's a TCP or UDP packet.
-                            rule_filters.push(format!("((tcp and tcp.SrcPort == {}) or (udp and udp.SrcPort == {}))", parsed_port, parsed_port));
+                            rule_filters.push(format!(
+                                "((tcp and tcp.SrcPort == {}) or (udp and udp.SrcPort == {}))",
+                                parsed_port, parsed_port
+                            ));
                         }
                     } else {
                         eprintln!("Invalid source port skipped: {}", src_port);
@@ -111,7 +125,7 @@ impl IpsEngine {
                     }
                 }
             }
-            
+
             if let Some(dst_port) = &rule.dst_port {
                 if !dst_port.is_empty() {
                     if let Ok(parsed_port) = dst_port.parse::<u16>() {
@@ -120,7 +134,10 @@ impl IpsEngine {
                         } else if rule.protocol == "UDP" {
                             rule_filters.push(format!("udp.DstPort == {}", parsed_port));
                         } else if rule.protocol == "Any" {
-                            rule_filters.push(format!("((tcp and tcp.DstPort == {}) or (udp and udp.DstPort == {}))", parsed_port, parsed_port));
+                            rule_filters.push(format!(
+                                "((tcp and tcp.DstPort == {}) or (udp and udp.DstPort == {}))",
+                                parsed_port, parsed_port
+                            ));
                         }
                     } else {
                         eprintln!("Invalid destination port skipped: {}", dst_port);
@@ -151,7 +168,10 @@ impl IpsEngine {
             let mut whitelist_filters = Vec::new();
             for w_ip in whitelisted_ips {
                 if let Ok(parsed_ip) = w_ip.parse::<IpAddr>() {
-                    whitelist_filters.push(format!("(ip.SrcAddr == '{}' or ip.DstAddr == '{}')", parsed_ip, parsed_ip));
+                    whitelist_filters.push(format!(
+                        "(ip.SrcAddr == '{}' or ip.DstAddr == '{}')",
+                        parsed_ip, parsed_ip
+                    ));
                 } else {
                     eprintln!("Invalid whitelist IP skipped: {}", w_ip);
                 }
@@ -189,7 +209,10 @@ impl IpsEngine {
                     let _ = wd.close(Default::default());
                 }
                 Err(e) => {
-                    eprintln!("Failed to open WinDivert (Ensure running as Administrator): {:?}", e);
+                    eprintln!(
+                        "Failed to open WinDivert (Ensure running as Administrator): {:?}",
+                        e
+                    );
                 }
             }
         });
@@ -199,7 +222,7 @@ impl IpsEngine {
 
     pub fn stop(&mut self) {
         self.is_running.store(false, Ordering::Relaxed);
-        
+
         // Send a dummy UDP packet to each blocked IP to wake up the blocking wd.recv() call!
         if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
             for ip in &self.current_ips {

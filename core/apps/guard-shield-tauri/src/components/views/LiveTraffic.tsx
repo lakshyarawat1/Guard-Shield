@@ -138,19 +138,11 @@ export default function LiveTraffic() {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          // Accumulate packets into the buffer ref instead of triggering state directly.
-          // Event payload contains packets in chronological order (oldest first).
-          // We want newer packets at the beginning of the list, so we reverse the payload
-          // and prepend it to the buffer (or conceptually, add to the buffer).
-
-          // Using push and manual spread to avoid recursive function call issues
-          // and state mutation. We slice the payload to create a new array and reverse it.
-          const newPackets = event.payload.slice().reverse();
-          bufferRef.current = [...newPackets, ...bufferRef.current];
-
-          // Cap the buffer size to avoid memory explosion before flush
-          if (bufferRef.current.length > 20000) {
-              bufferRef.current = bufferRef.current.slice(0, 20000);
+          // ⚡ Bolt Optimization: Avoid O(N^2) array spreading inside listener
+          // Push new packets directly to a mutable ref buffer and keep strict limit
+          bufferRef.current.push(...event.payload);
+          if (bufferRef.current.length > 10000) {
+            bufferRef.current = bufferRef.current.slice(-10000);
           }
         });
 
@@ -159,8 +151,10 @@ export default function LiveTraffic() {
         // when handling high-frequency live network traffic.
         intervalId = setInterval(() => {
           if (bufferRef.current.length > 0) {
-            // Make a copy and clear the ref before updating state to stay pure
-            const itemsToAdd = bufferRef.current.slice();
+            // ⚡ Bolt Optimization: Flush incoming packets from Tauri `listen` events periodically
+            // This batches updates and prevents excessive synchronous React re-renders
+            // when handling high-frequency live network traffic.
+            const itemsToAdd = [...bufferRef.current].reverse();
             bufferRef.current = [];
 
             setPackets((prev) => {
@@ -169,7 +163,7 @@ export default function LiveTraffic() {
               return newPackets.slice(0, 10000);
             });
           }
-        }, 500); // Throttle React state updates to 2fps for better performance
+        }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
         setError(String(e));
