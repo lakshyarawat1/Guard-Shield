@@ -52,6 +52,7 @@ interface TelemetryStats {
 const Monitoring = () => {
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
+  // ⚡ Bolt Optimization: Buffer high-frequency incoming alerts to avoid excessive synchronous re-renders
   const alertsBufferRef = useRef<AlertData[]>([]);
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -199,6 +200,7 @@ const Monitoring = () => {
 
     const setupListener = async () => {
       const unlisten = await listen<AlertData>("intrusion-alert", (event) => {
+          alertsBufferRef.current.push(event.payload);
         alertsBufferRef.current.push(event.payload);
       });
       return unlisten;

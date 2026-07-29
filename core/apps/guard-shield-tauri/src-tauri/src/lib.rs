@@ -4,10 +4,6 @@ mod packet_capturer;
 pub mod threat_feed;
 
 use crossbeam_channel::{unbounded, Receiver};
-use packet_capturer::PacketData;
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicBool, Ordering}};
-use tauri::{AppHandle, Emitter, State, Manager};
-use tauri_plugin_fs::FsExt;
 use ips_engine::IpsEngine;
 use std::collections::HashSet;
 
