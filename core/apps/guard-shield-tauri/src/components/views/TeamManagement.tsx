@@ -142,7 +142,7 @@ export default function TeamManagement() {
       fetchMembers();
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Failed to add user");
+      toast.error("Failed to add user");
     } finally {
       setIsInviting(false);
     }

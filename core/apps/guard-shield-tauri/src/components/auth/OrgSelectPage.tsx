@@ -50,7 +50,7 @@ export default function OrgSelectPage() {
       navigate("/");
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Failed to create organization");
+      toast.error("Failed to create organization");
     } finally {
       setIsCreating(false);
     }
