@@ -1,10 +1,10 @@
-use rusqlite::{Connection, Result, params};
-use std::sync::Mutex;
-use std::path::PathBuf;
-use std::collections::HashMap;
 use crate::packet_capturer::PacketData;
-use serde::{Deserialize, Serialize};
 use chrono::Local;
+use rusqlite::{params, Connection, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AlertData {
@@ -156,9 +156,12 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
         )",
         [],
     )?;
-    
+
     // Add direction column if missing (migration)
-    let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN direction TEXT NOT NULL DEFAULT 'Inbound'", []);
+    let _ = conn.execute(
+        "ALTER TABLE custom_rules ADD COLUMN direction TEXT NOT NULL DEFAULT 'Inbound'",
+        [],
+    );
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS blocked_ips (
@@ -228,18 +231,23 @@ pub fn init_db(app_dir: PathBuf) -> Result<DatabaseState> {
 
     // ⚡ Bolt Optimization: Add index to speed up `get_telemetry_stats` range query on `timestamp`.
     // Turns O(N) full table scan into an O(log N) index lookup.
-    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp)", []);
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp)",
+        [],
+    );
 
-    Ok(DatabaseState { conn: Mutex::new(conn) })
+    Ok(DatabaseState {
+        conn: Mutex::new(conn),
+    })
 }
 
 pub fn insert_packet(
-    conn: &Connection, 
-    p: &PacketData, 
-    counter: &mut u64, 
-    custom_rules: &[CustomRule], 
+    conn: &Connection,
+    p: &PacketData,
+    counter: &mut u64,
+    custom_rules: &[CustomRule],
     enable_malware_sigs: bool,
-    threat_ips: &std::collections::HashSet<String>
+    threat_ips: &std::collections::HashSet<String>,
 ) -> Result<Option<AlertData>> {
     let payload = p.payload.first().map(|s| s.as_str()).unwrap_or("");
     let src_country = p.src_country.first().map(|s| s.as_str()).unwrap_or("");
@@ -288,7 +296,7 @@ pub fn insert_packet(
 
     let src_ip = p.ip_src.first().map(|s| s.as_str()).unwrap_or("");
     let dst_ip = p.ip_dst.first().map(|s| s.as_str()).unwrap_or("");
-    
+
     // 0. Threat Intelligence OSINT Matching
     if threat_ips.contains(src_ip) {
         impact_score = 9.8;
@@ -298,44 +306,76 @@ pub fn insert_packet(
         info = "Malicious IP detected in Threat Feed (Destination)".to_string();
     }
     let dst_ip = p.ip_dst.first().map(|s| s.as_str()).unwrap_or("");
-    
+
     let default_empty = String::new();
-    let src_port_ref = p.tcp_srcport.first().unwrap_or_else(|| p.udp_srcport.first().unwrap_or(&default_empty));
-    let dst_port_ref = p.tcp_dstport.first().unwrap_or_else(|| p.udp_dstport.first().unwrap_or(&default_empty));
-    
+    let src_port_ref = p
+        .tcp_srcport
+        .first()
+        .unwrap_or_else(|| p.udp_srcport.first().unwrap_or(&default_empty));
+    let dst_port_ref = p
+        .tcp_dstport
+        .first()
+        .unwrap_or_else(|| p.udp_dstport.first().unwrap_or(&default_empty));
+
     let src_lat = p.src_lat.first().and_then(|s| s.parse::<f64>().ok());
     let src_lon = p.src_lon.first().and_then(|s| s.parse::<f64>().ok());
     let dst_lat = p.dst_lat.first().and_then(|s| s.parse::<f64>().ok());
     let dst_lon = p.dst_lon.first().and_then(|s| s.parse::<f64>().ok());
-    
+
     let src_port = src_port_ref.as_str();
     let dst_port = dst_port_ref.as_str();
 
-    let proto_name = if proto == "6" { "TCP" } else if proto == "17" { "UDP" } else if proto == "1" { "ICMP" } else { "Any" };
+    let proto_name = if proto == "6" {
+        "TCP"
+    } else if proto == "17" {
+        "UDP"
+    } else if proto == "1" {
+        "ICMP"
+    } else {
+        "Any"
+    };
 
     // Determine packet direction for rule evaluation
     let packet_direction = if let Ok(ip) = src_ip.parse::<std::net::IpAddr>() {
         let is_local = match ip {
-            std::net::IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_loopback() || ipv4.is_link_local() || ipv4.is_multicast() || ipv4.is_broadcast(),
+            std::net::IpAddr::V4(ipv4) => {
+                ipv4.is_private()
+                    || ipv4.is_loopback()
+                    || ipv4.is_link_local()
+                    || ipv4.is_multicast()
+                    || ipv4.is_broadcast()
+            }
             std::net::IpAddr::V6(ipv6) => ipv6.is_loopback() || ipv6.is_multicast(),
         };
-        if is_local { "Outbound" } else { "Inbound" }
+        if is_local {
+            "Outbound"
+        } else {
+            "Inbound"
+        }
     } else {
         "Inbound" // Default fallback
     };
 
     // 1. Evaluate Custom Rules first
     for rule in custom_rules {
-        if !rule.is_active { continue; }
-        
+        if !rule.is_active {
+            continue;
+        }
+
         let dir_match = rule.direction == "Both" || rule.direction == packet_direction;
-        if !dir_match { continue; }
-        
+        if !dir_match {
+            continue;
+        }
+
         let proto_match = rule.protocol == "Any" || rule.protocol == proto_name;
-        let src_ip_match = rule.src_ip.as_deref().unwrap_or("").is_empty() || rule.src_ip.as_deref().unwrap_or("") == src_ip;
-        let dst_ip_match = rule.dst_ip.as_deref().unwrap_or("").is_empty() || rule.dst_ip.as_deref().unwrap_or("") == dst_ip;
-        let src_port_match = rule.src_port.as_deref().unwrap_or("").is_empty() || rule.src_port.as_deref().unwrap_or("") == src_port;
-        let dst_port_match = rule.dst_port.as_deref().unwrap_or("").is_empty() || rule.dst_port.as_deref().unwrap_or("") == dst_port;
+        let src_ip_match = rule.src_ip.as_deref().unwrap_or("").is_empty()
+            || rule.src_ip.as_deref().unwrap_or("") == src_ip;
+        let dst_ip_match = rule.dst_ip.as_deref().unwrap_or("").is_empty()
+            || rule.dst_ip.as_deref().unwrap_or("") == dst_ip;
+        let src_port_match = rule.src_port.as_deref().unwrap_or("").is_empty()
+            || rule.src_port.as_deref().unwrap_or("") == src_port;
+        let dst_port_match = rule.dst_port.as_deref().unwrap_or("").is_empty()
+            || rule.dst_port.as_deref().unwrap_or("") == dst_port;
 
         if proto_match && src_ip_match && dst_ip_match && src_port_match && dst_port_match {
             impact_score = 10.0; // Custom rules are high priority
@@ -348,13 +388,17 @@ pub fn insert_packet(
 
     // 2. Evaluate Deep Packet Inspection (DPI) Signatures
     if info.is_empty() {
-        let json_rules: Vec<serde_json::Value> = serde_json::from_str(include_str!("rules.json")).unwrap_or_default();
+        let json_rules: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("rules.json")).unwrap_or_default();
         for r in json_rules {
-            if let (Some(msg), Some(cat)) = (r.get("msg").and_then(|v| v.as_str()), r.get("category").and_then(|v| v.as_str())) {
+            if let (Some(msg), Some(cat)) = (
+                r.get("msg").and_then(|v| v.as_str()),
+                r.get("category").and_then(|v| v.as_str()),
+            ) {
                 if !enable_malware_sigs && cat == "malware_c2" {
                     continue;
                 }
-                
+
                 let r_proto = r.get("protocol").and_then(|v| v.as_str()).unwrap_or("Any");
                 if r_proto != "Any" && !proto_name.eq_ignore_ascii_case(r_proto) {
                     continue;
@@ -368,8 +412,11 @@ pub fn insert_packet(
                         r_dst_port = n.to_string();
                     }
                 }
-                
-                if !r_dst_port.is_empty() && r_dst_port.to_lowercase() != "any" && r_dst_port.to_lowercase() != "n/a" {
+
+                if !r_dst_port.is_empty()
+                    && r_dst_port.to_lowercase() != "any"
+                    && r_dst_port.to_lowercase() != "n/a"
+                {
                     if r_dst_port != dst_port {
                         continue;
                     }
@@ -415,7 +462,10 @@ pub fn insert_packet(
                     continue;
                 }
 
-                impact_score = r.get("impact_score").and_then(|v| v.as_f64()).unwrap_or(5.0);
+                impact_score = r
+                    .get("impact_score")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(5.0);
                 port = dst_port.to_string();
                 protocol_str = proto_name.to_string();
                 info = msg.to_string();
@@ -425,10 +475,11 @@ pub fn insert_packet(
     }
 
     // 2. Evaluate Deep Packet Inspection (DPI) Signatures
-    let is_web_response = packet_direction == "Inbound" && (src_port == "80" || src_port == "443" || src_port == "8080");
+    let is_web_response = packet_direction == "Inbound"
+        && (src_port == "80" || src_port == "443" || src_port == "8080");
     if impact_score == 0.0 && !payload.is_empty() && !is_web_response {
         let payload_lower = payload.to_lowercase();
-        
+
         if payload_lower.contains("union select ") || payload_lower.contains(" drop table ") {
             impact_score = 8.5;
             port = dst_port.to_string();
@@ -439,7 +490,10 @@ pub fn insert_packet(
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
             info = "Cross-Site Scripting (XSS) Attempt".to_string();
-        } else if payload_lower.contains("../../../") || payload_lower.contains("..\\..\\..\\") || payload_lower.contains("/etc/passwd") {
+        } else if payload_lower.contains("../../../")
+            || payload_lower.contains("..\\..\\..\\")
+            || payload_lower.contains("/etc/passwd")
+        {
             impact_score = 9.0;
             port = dst_port.to_string();
             protocol_str = proto_name.to_string();
@@ -454,12 +508,12 @@ pub fn insert_packet(
 
     // 3. Evaluate Hardcoded Rules only if no custom rule or DPI matched
     if impact_score == 0.0 && packet_direction == "Inbound" {
-        if proto == "1" { 
+        if proto == "1" {
             impact_score = 2.0;
             port = "N/A".to_string();
             protocol_str = "ICMP".to_string();
             info = "Possible ICMP Ping".to_string();
-        } else if proto == "6" { 
+        } else if proto == "6" {
             let dst_port = p.tcp_dstport.first().map(|s| s.as_str()).unwrap_or("");
             if dst_port == "23" {
                 impact_score = 8.5;
@@ -498,7 +552,7 @@ pub fn insert_packet(
         };
 
         let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        
+
         let src_country = p.src_country.first().map(|s| s.as_str()).unwrap_or("");
         let dst_country = p.dst_country.first().map(|s| s.as_str()).unwrap_or("");
 
@@ -508,7 +562,7 @@ pub fn insert_packet(
         ).is_ok() {
             let uppercase_severity = severity.to_uppercase();
             let _ = log_audit_event(conn, "SYSTEM_EVENT", &uppercase_severity, "Intrusion Alert", &format!("IP: {}, Rule: {}", src_ip, info));
-            
+
             let id = conn.last_insert_rowid();
             alert = Some(AlertData {
                 id,
@@ -533,7 +587,12 @@ pub fn insert_packet(
     Ok(alert)
 }
 
-pub fn insert_mock_alert(conn: &Connection, severity: &str, impact: f64, src_ip: &str) -> Result<AlertData> {
+pub fn insert_mock_alert(
+    conn: &Connection,
+    severity: &str,
+    impact: f64,
+    src_ip: &str,
+) -> Result<AlertData> {
     use chrono::Local;
     let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let port = "1337";
@@ -546,7 +605,13 @@ pub fn insert_mock_alert(conn: &Connection, severity: &str, impact: f64, src_ip:
     )?;
 
     let uppercase_severity = severity.to_uppercase();
-    let _ = log_audit_event(conn, "SYSTEM_EVENT", &uppercase_severity, "Mock Intrusion Alert", &format!("IP: {}, Info: {}", src_ip, info));
+    let _ = log_audit_event(
+        conn,
+        "SYSTEM_EVENT",
+        &uppercase_severity,
+        "Mock Intrusion Alert",
+        &format!("IP: {}, Info: {}", src_ip, info),
+    );
 
     let id = conn.last_insert_rowid();
     Ok(AlertData {
@@ -633,7 +698,8 @@ pub fn get_alerts(conn: &Connection) -> Result<Vec<AlertData>> {
 }
 
 pub fn get_blocked_ips(conn: &Connection) -> Result<Vec<BlockedIpData>> {
-    let mut stmt = conn.prepare("SELECT id, ip, reason, timestamp FROM blocked_ips ORDER BY timestamp DESC")?;
+    let mut stmt =
+        conn.prepare("SELECT id, ip, reason, timestamp FROM blocked_ips ORDER BY timestamp DESC")?;
     let ip_iter = stmt.query_map([], |row| {
         Ok(BlockedIpData {
             id: row.get(0)?,
@@ -657,9 +723,10 @@ pub fn insert_blocked_ip(conn: &Connection, ip: &str, reason: &str) -> Result<Bl
         params![ip, reason, timestamp],
     )?;
 
-    // We can't use last_insert_rowid reliably with INSERT OR IGNORE if it was ignored, 
+    // We can't use last_insert_rowid reliably with INSERT OR IGNORE if it was ignored,
     // so we fetch it back to get the real ID and Timestamp.
-    let mut stmt = conn.prepare("SELECT id, ip, reason, timestamp FROM blocked_ips WHERE ip = ?1")?;
+    let mut stmt =
+        conn.prepare("SELECT id, ip, reason, timestamp FROM blocked_ips WHERE ip = ?1")?;
     let ip_data = stmt.query_row(params![ip], |row| {
         Ok(BlockedIpData {
             id: row.get(0)?,
@@ -673,15 +740,13 @@ pub fn insert_blocked_ip(conn: &Connection, ip: &str, reason: &str) -> Result<Bl
 }
 
 pub fn remove_blocked_ip(conn: &Connection, ip: &str) -> Result<()> {
-    conn.execute(
-        "DELETE FROM blocked_ips WHERE ip = ?1",
-        params![ip],
-    )?;
+    conn.execute("DELETE FROM blocked_ips WHERE ip = ?1", params![ip])?;
     Ok(())
 }
 
 pub fn get_whitelisted_ips(conn: &Connection) -> Result<Vec<WhitelistedIpData>> {
-    let mut stmt = conn.prepare("SELECT id, ip, reason, timestamp FROM whitelisted_ips ORDER BY id DESC")?;
+    let mut stmt =
+        conn.prepare("SELECT id, ip, reason, timestamp FROM whitelisted_ips ORDER BY id DESC")?;
     let ip_iter = stmt.query_map([], |row| {
         Ok(WhitelistedIpData {
             id: row.get(0)?,
@@ -708,18 +773,23 @@ pub fn insert_whitelisted_ip(conn: &Connection, ip: &str, reason: &str) -> Resul
 }
 
 pub fn remove_whitelisted_ip(conn: &Connection, ip: &str) -> Result<()> {
-    conn.execute(
-        "DELETE FROM whitelisted_ips WHERE ip = ?1",
-        params![ip],
-    )?;
+    conn.execute("DELETE FROM whitelisted_ips WHERE ip = ?1", params![ip])?;
     Ok(())
 }
 
 pub fn get_telemetry_stats(conn: &Connection) -> Result<TelemetryStats> {
-    let total_alerts: i64 = conn.query_row("SELECT count(*) FROM alerts", [], |row| row.get(0)).unwrap_or(0);
+    let total_alerts: i64 = conn
+        .query_row("SELECT count(*) FROM alerts", [], |row| row.get(0))
+        .unwrap_or(0);
     // Simple 24h check: we store timestamp as YYYY-MM-DDTHH:MM:SS. SQLite date function:
-    let last_24h = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%dT%H:%M:%S").to_string();
-    let row_count = conn.query_row("SELECT COUNT(*) FROM alerts WHERE timestamp >= ?1", params![last_24h], |row| row.get(0))?;
+    let last_24h = (chrono::Local::now() - chrono::Duration::days(1))
+        .format("%Y-%m-%dT%H:%M:%S")
+        .to_string();
+    let row_count = conn.query_row(
+        "SELECT COUNT(*) FROM alerts WHERE timestamp >= ?1",
+        params![last_24h],
+        |row| row.get(0),
+    )?;
 
     Ok(TelemetryStats {
         total_alerts,
@@ -770,7 +840,10 @@ pub fn delete_custom_rule(conn: &Connection, id: i64) -> Result<()> {
 }
 
 pub fn toggle_custom_rule(conn: &Connection, id: i64, is_active: bool) -> Result<()> {
-    conn.execute("UPDATE custom_rules SET is_active = ?1 WHERE id = ?2", params![is_active, id])?;
+    conn.execute(
+        "UPDATE custom_rules SET is_active = ?1 WHERE id = ?2",
+        params![is_active, id],
+    )?;
     Ok(())
 }
 
@@ -790,13 +863,21 @@ pub struct SystemHealthStats {
     pub is_capturing: bool,
 }
 
-pub fn get_system_health_stats(conn: &Connection, app_dir: std::path::PathBuf, is_capturing: bool) -> Result<SystemHealthStats> {
+pub fn get_system_health_stats(
+    conn: &Connection,
+    app_dir: std::path::PathBuf,
+    is_capturing: bool,
+) -> Result<SystemHealthStats> {
     let db_path = app_dir.join("guard_shield.db");
     let database_size_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
-    
-    let total_packets: i64 = conn.query_row("SELECT count(*) FROM packets", [], |row| row.get(0)).unwrap_or(0);
-    let total_alerts: i64 = conn.query_row("SELECT count(*) FROM alerts", [], |row| row.get(0)).unwrap_or(0);
-    
+
+    let total_packets: i64 = conn
+        .query_row("SELECT count(*) FROM packets", [], |row| row.get(0))
+        .unwrap_or(0);
+    let total_alerts: i64 = conn
+        .query_row("SELECT count(*) FROM alerts", [], |row| row.get(0))
+        .unwrap_or(0);
+
     Ok(SystemHealthStats {
         database_size_bytes,
         total_packets,
@@ -812,7 +893,13 @@ pub fn clear_database(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn log_audit_event(conn: &Connection, log_type: &str, severity: &str, action: &str, details: &str) -> Result<()> {
+pub fn log_audit_event(
+    conn: &Connection,
+    log_type: &str,
+    severity: &str,
+    action: &str,
+    details: &str,
+) -> Result<()> {
     let now = Local::now().to_rfc3339();
     conn.execute(
         "INSERT INTO audit_logs (timestamp, log_type, severity, action, details) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -844,47 +931,55 @@ pub fn update_settings(conn: &Connection, updates: &HashMap<String, String>) -> 
 }
 
 pub fn get_audit_logs(
-    conn: &Connection, 
-    log_type_filter: Option<String>, 
+    conn: &Connection,
+    log_type_filter: Option<String>,
     limit: i64,
     offset: i64,
     start_date: Option<String>,
     end_date: Option<String>,
-    category: Option<String>
+    category: Option<String>,
 ) -> Result<Vec<AuditLog>> {
-    let mut query = "SELECT id, timestamp, log_type, severity, action, details FROM audit_logs WHERE 1=1".to_string();
-    
+    let mut query =
+        "SELECT id, timestamp, log_type, severity, action, details FROM audit_logs WHERE 1=1"
+            .to_string();
+
     let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
-    
+
     if let Some(log_type) = &log_type_filter {
         query.push_str(&format!(" AND log_type = ?{}", params.len() + 1));
         params.push(log_type);
     }
-    
+
     if let Some(start) = &start_date {
         query.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
         params.push(start);
     }
-    
+
     if let Some(end) = &end_date {
         query.push_str(&format!(" AND timestamp <= ?{}", params.len() + 1));
         params.push(end);
     }
-    
+
     if let Some(cat) = &category {
         if cat == "Engine Actions" {
-            query.push_str(" AND (action LIKE '%Start%' OR action LIKE '%Stop%' OR action LIKE '%Fail%')");
+            query.push_str(
+                " AND (action LIKE '%Start%' OR action LIKE '%Stop%' OR action LIKE '%Fail%')",
+            );
         } else if cat == "Intrusion Alerts" {
             query.push_str(" AND action LIKE '%Intrusion Alert%'");
         }
     }
-    
-    query.push_str(&format!(" ORDER BY id DESC LIMIT ?{} OFFSET ?{}", params.len() + 1, params.len() + 2));
+
+    query.push_str(&format!(
+        " ORDER BY id DESC LIMIT ?{} OFFSET ?{}",
+        params.len() + 1,
+        params.len() + 2
+    ));
     params.push(&limit);
     params.push(&offset);
 
     let mut stmt = conn.prepare(&query)?;
-    
+
     let rows = stmt.query_map(rusqlite::params_from_iter(params.into_iter()), |row| {
         Ok(AuditLog {
             id: row.get(0)?,
@@ -900,7 +995,7 @@ pub fn get_audit_logs(
     for log in rows {
         logs.push(log?);
     }
-    
+
     Ok(logs)
 }
 
@@ -909,7 +1004,10 @@ pub fn clear_audit_logs(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn save_threat_indicators(conn: &mut Connection, indicators: &[crate::threat_feed::ThreatIndicator]) -> Result<()> {
+pub fn save_threat_indicators(
+    conn: &mut Connection,
+    indicators: &[crate::threat_feed::ThreatIndicator],
+) -> Result<()> {
     let tx = conn.transaction()?;
     {
         let mut stmt = tx.prepare(
@@ -932,7 +1030,9 @@ pub fn save_threat_indicators(conn: &mut Connection, indicators: &[crate::threat
     Ok(())
 }
 
-pub fn get_all_threat_indicators(conn: &Connection) -> Result<Vec<crate::threat_feed::ThreatIndicator>> {
+pub fn get_all_threat_indicators(
+    conn: &Connection,
+) -> Result<Vec<crate::threat_feed::ThreatIndicator>> {
     let mut stmt = conn.prepare("SELECT id, indicator, type, provider, category, confidence, date_added FROM threat_intelligence")?;
     let rows = stmt.query_map([], |row| {
         Ok(crate::threat_feed::ThreatIndicator {
@@ -956,7 +1056,7 @@ pub fn get_all_threat_indicators(conn: &Connection) -> Result<Vec<crate::threat_
 pub fn get_pdf_report_data(conn: &Connection, time_range_hours: u32) -> Result<ReportData> {
     let total_alerts: i64;
     let total_packets: i64;
-    
+
     let time_filter = if time_range_hours > 0 {
         let cutoff = (chrono::Local::now() - chrono::Duration::hours(time_range_hours as i64))
             .format("%Y-%m-%dT%H:%M:%S")
@@ -965,43 +1065,62 @@ pub fn get_pdf_report_data(conn: &Connection, time_range_hours: u32) -> Result<R
     } else {
         String::new()
     };
-    
-    total_alerts = conn.query_row(
-        &format!("SELECT count(*) FROM alerts {}", time_filter),
-        [],
-        |row| row.get(0)
-    ).unwrap_or(0);
-    
-    total_packets = conn.query_row("SELECT count(*) FROM packets", [], |row| row.get(0)).unwrap_or(0);
+
+    total_alerts = conn
+        .query_row(
+            &format!("SELECT count(*) FROM alerts {}", time_filter),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    total_packets = conn
+        .query_row("SELECT count(*) FROM packets", [], |row| row.get(0))
+        .unwrap_or(0);
 
     let mut severity_counts = std::collections::HashMap::new();
-    let mut stmt = conn.prepare(&format!("SELECT severity, COUNT(*) FROM alerts {} GROUP BY severity", time_filter))?;
-    let _ = stmt.query_map([], |row| {
-        let sev: String = row.get(0)?;
-        let count: i64 = row.get(1)?;
-        severity_counts.insert(sev, count);
-        Ok(())
-    })?.for_each(|_| {});
+    let mut stmt = conn.prepare(&format!(
+        "SELECT severity, COUNT(*) FROM alerts {} GROUP BY severity",
+        time_filter
+    ))?;
+    let _ = stmt
+        .query_map([], |row| {
+            let sev: String = row.get(0)?;
+            let count: i64 = row.get(1)?;
+            severity_counts.insert(sev, count);
+            Ok(())
+        })?
+        .for_each(|_| {});
 
     let mut top_src_ips = Vec::new();
-    let mut stmt = conn.prepare(&format!("SELECT src_ip, COUNT(*) as c FROM alerts {} GROUP BY src_ip ORDER BY c DESC LIMIT 10", time_filter))?;
-    let _ = stmt.query_map([], |row| {
-        top_src_ips.push(TopIpData {
-            ip: row.get(0)?,
-            count: row.get(1)?,
-        });
-        Ok(())
-    })?.for_each(|_| {});
+    let mut stmt = conn.prepare(&format!(
+        "SELECT src_ip, COUNT(*) as c FROM alerts {} GROUP BY src_ip ORDER BY c DESC LIMIT 10",
+        time_filter
+    ))?;
+    let _ = stmt
+        .query_map([], |row| {
+            top_src_ips.push(TopIpData {
+                ip: row.get(0)?,
+                count: row.get(1)?,
+            });
+            Ok(())
+        })?
+        .for_each(|_| {});
 
     let mut top_rules = Vec::new();
-    let mut stmt = conn.prepare(&format!("SELECT info, COUNT(*) as c FROM alerts {} GROUP BY info ORDER BY c DESC LIMIT 5", time_filter))?;
-    let _ = stmt.query_map([], |row| {
-        top_rules.push(TopRuleData {
-            rule_name: row.get(0)?,
-            count: row.get(1)?,
-        });
-        Ok(())
-    })?.for_each(|_| {});
+    let mut stmt = conn.prepare(&format!(
+        "SELECT info, COUNT(*) as c FROM alerts {} GROUP BY info ORDER BY c DESC LIMIT 5",
+        time_filter
+    ))?;
+    let _ = stmt
+        .query_map([], |row| {
+            top_rules.push(TopRuleData {
+                rule_name: row.get(0)?,
+                count: row.get(1)?,
+            });
+            Ok(())
+        })?
+        .for_each(|_| {});
 
     Ok(ReportData {
         total_alerts,

@@ -138,17 +138,25 @@ export default function LiveTraffic() {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          // Push items into the bufferRef to decouple from component re-renders
-          const reversedPayload = [...event.payload].reverse();
-          bufferRef.current = [...reversedPayload, ...bufferRef.current];
+          // ⚡ Bolt Optimization: Avoid O(N^2) array spreading inside listener
+          // Push new packets directly to a mutable ref buffer and keep strict limit
+          bufferRef.current.push(...event.payload);
+          if (bufferRef.current.length > 10000) {
+            bufferRef.current = bufferRef.current.slice(-10000);
+          }
         });
 
+        // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
+        // and flush them periodically. This prevents excessive synchronous React re-renders
+        // when handling high-frequency live network traffic.
         intervalId = setInterval(() => {
           if (bufferRef.current.length > 0) {
-            // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
-            // and flush them periodically. This prevents excessive synchronous React re-renders
+            // ⚡ Bolt Optimization: Flush incoming packets from Tauri `listen` events periodically
+            // This batches updates and prevents excessive synchronous React re-renders
             // when handling high-frequency live network traffic.
-            const itemsToAdd = bufferRef.current.splice(0, bufferRef.current.length);
+            const itemsToAdd = [...bufferRef.current].reverse();
+            bufferRef.current = [];
+
             setPackets((prev) => {
               // Keep last 10000 packets for performance
               const newPackets = [...itemsToAdd, ...prev];
