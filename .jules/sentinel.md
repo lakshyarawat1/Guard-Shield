@@ -1,3 +1,7 @@
+## 2023-10-27 - [Path Traversal in Tauri File Commands]
+**Vulnerability:** Arbitrary File Read/Write and Path Traversal found in `save_snapshot` and `restore_snapshot` Tauri commands. The frontend passed raw string paths which were directly used in `std::fs::copy` without validation.
+**Learning:** Even if a desktop app uses standard file selection dialogs in the frontend, the backend Tauri commands cannot trust the provided path strings. A malicious frontend payload or compromised dependency could send any path (e.g. `/etc/passwd`).
+**Prevention:** Always validate frontend-provided file paths against Tauri's FS scope plugin using `app.try_fs_scope()?.is_allowed(&path)` before executing raw Rust filesystem operations.
 ## 2024-05-24 - Avoid Information Leakage via Alert Dialogs
 **Vulnerability:** Application internally exposed raw Tauri error objects, including messages and serialized JSON, directly to the user via JavaScript `alert()` pop-ups when window creation failed.
 **Learning:** This practice can inadvertently leak sensitive internal paths, stack traces, or configuration details, violating the "fail securely" principle and providing potential reconnaissance data to an attacker.
@@ -15,3 +19,7 @@
 **Vulnerability:** The Tauri backend functions `save_snapshot` and `restore_snapshot` accepted unvalidated file paths from the frontend, allowing arbitrary file read/write (path traversal) using `std::fs::copy`.
 **Learning:** In Tauri, the frontend can theoretically pass any path to backend commands. By default, raw Rust filesystem operations (like `std::fs::copy`) bypass Tauri's scope configurations (`fs` plugin scopes).
 **Prevention:** Always validate file paths passed from the frontend using Tauri's FS scope plugin. Specifically, use `app.try_fs_scope().unwrap().is_allowed(&path)` before performing any file operations.
+## 2024-07-28 - [Information Disclosure Prevention in Frontend Toasts]
+**Vulnerability:** Raw error objects (like `e.toString()`, `err.message`) were being directly displayed to users via UI notifications (`toast.error`).
+**Learning:** This is a common anti-pattern in React apps that can accidentally leak sensitive internal information (stack traces, file paths, specific backend database errors) to potentially malicious users when API or system calls fail.
+**Prevention:** Always log raw errors to `console.error()` for debugging purposes, but render generic, sanitized error messages (e.g., "An internal error occurred", "Failed to retrieve data") in user-facing UI components.

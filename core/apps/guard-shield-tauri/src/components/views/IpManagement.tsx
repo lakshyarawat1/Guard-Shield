@@ -50,7 +50,7 @@ const IpManagement = () => {
       toast.success(`Unblocked IP: ${ip}`);
       fetchIps();
     } catch (e) {
-      toast.error(`Failed to unblock IP: ${ip}`, { description: String(e) });
+      toast.error(`Failed to unblock IP: ${ip}`, { description: "An internal error occurred." });
     }
   };
 
@@ -60,7 +60,7 @@ const IpManagement = () => {
       toast.success(`Removed IP from whitelist: ${ip}`);
       fetchIps();
     } catch (e) {
-      toast.error(`Failed to remove IP from whitelist: ${ip}`, { description: String(e) });
+      toast.error(`Failed to remove IP from whitelist: ${ip}`, { description: "An internal error occurred." });
     }
   };
 
@@ -73,7 +73,7 @@ const IpManagement = () => {
       setNewBlockedIp("");
       fetchIps();
     } catch (e) {
-      toast.error(`Failed to block IP: ${newBlockedIp}`, { description: String(e) });
+      toast.error(`Failed to block IP: ${newBlockedIp}`, { description: "An internal error occurred." });
     }
   };
 
@@ -86,7 +86,7 @@ const IpManagement = () => {
       setNewWhitelistedIp("");
       fetchIps();
     } catch (e) {
-      toast.error(`Failed to whitelist IP: ${newWhitelistedIp}`, { description: String(e) });
+      toast.error(`Failed to whitelist IP: ${newWhitelistedIp}`, { description: "An internal error occurred." });
     }
   };
 
@@ -95,7 +95,7 @@ const IpManagement = () => {
       const result: string = await invoke("test_connection", { ip });
       toast.info(`Test Result for ${ip}`, { description: result });
     } catch (e) {
-      toast.error("Test execution failed", { description: String(e) });
+      toast.error("Test execution failed", { description: "An internal error occurred." });
     }
   };
 

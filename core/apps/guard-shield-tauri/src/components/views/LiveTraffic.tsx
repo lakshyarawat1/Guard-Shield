@@ -73,6 +73,7 @@ const getProtocolColor = (proto: string | undefined) => {
 export default function LiveTraffic() {
   const [packets, setPackets] = useState<PacketType[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const bufferRef = useRef<PacketType[]>([]);
 
   // ⚡ Bolt: Buffer incoming packets to avoid high-frequency renders
   const packetBufferRef = useRef<PacketType[]>([]);
@@ -133,6 +134,8 @@ export default function LiveTraffic() {
 
   useEffect(() => {
     let unlisten: () => void;
+    let intervalId: ReturnType<typeof setInterval>;
+    let isMounted = true;
 
     // ⚡ Bolt: Interval to flush packet buffer to state periodically
     // This batches updates and prevents excessive synchronous re-renders.
@@ -153,19 +156,46 @@ export default function LiveTraffic() {
       try {
         setError(null);
         unlisten = await listen<PacketType[]>("packets-batch", (event) => {
-          // Push to buffer instead of directly updating state
-          packetBufferRef.current.push(...event.payload);
+          // ⚡ Bolt Optimization: Avoid O(N^2) array spreading inside listener
+          // Push new packets directly to a mutable ref buffer and keep strict limit
+          bufferRef.current.push(...event.payload);
+          if (bufferRef.current.length > 10000) {
+            bufferRef.current = bufferRef.current.slice(-10000);
+          }
         });
+
+        // ⚡ Bolt Optimization: Buffer incoming packets from Tauri `listen` events
+        // and flush them periodically. This prevents excessive synchronous React re-renders
+        // when handling high-frequency live network traffic.
+        intervalId = setInterval(() => {
+          if (bufferRef.current.length > 0) {
+            // ⚡ Bolt Optimization: Flush incoming packets from Tauri `listen` events periodically
+            // This batches updates and prevents excessive synchronous React re-renders
+            // when handling high-frequency live network traffic.
+            const itemsToAdd = [...bufferRef.current].reverse();
+            bufferRef.current = [];
+
+            setPackets((prev) => {
+              // Keep last 10000 packets for performance
+              const newPackets = [...itemsToAdd, ...prev];
+              return newPackets.slice(0, 10000);
+            });
+          }
+        }, 500); // ⚡ Bolt: Throttle React state updates to 2fps for better performance
       } catch (e) {
         console.error("Failed to setup packet capture:", e);
         setError(String(e));
       }
+
+      // Avoid race conditions if unmounted while `listen` was resolving
+      if (!isMounted && intervalId) clearInterval(intervalId);
     };
 
     setupCapture();
 
     return () => {
-      clearInterval(flushInterval);
+      isMounted = false;
+      if (intervalId) clearInterval(intervalId);
       if (unlisten) unlisten();
     };
   }, []);
@@ -174,11 +204,24 @@ export default function LiveTraffic() {
     // Performance improvement: Memoize filtering to prevent O(n) operation on every render
     // especially important when packet array grows up to 10000 items
     // ⚡ Bolt: Use debounced filter states to prevent lag during rapid typing
+    // ⚡ Bolt: Pre-calculate the target protocol number outside the filter loop
+    // This turns an O(n) object lookup and number cast into an O(1) string comparison
+    let targetProtoNum: string | null = null;
+    if (filterProto !== "All") {
+      const entry = Object.entries(protocolNames).find(([_, name]) => name === filterProto);
+      if (entry) targetProtoNum = entry[0];
+    }
+
     return packets.filter((p) => {
       if (filterProto !== "All") {
         const pNum = p.ip_proto?.[0];
-        const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
-        if (pName !== filterProto) return false;
+        if (targetProtoNum) {
+           if (String(pNum) !== targetProtoNum) return false;
+        } else {
+           // Fallback for custom protocols not in constants
+           const pName = pNum ? protocolNames[Number(pNum) as keyof typeof protocolNames] || pNum : "N/A";
+           if (pName !== filterProto) return false;
+        }
       }
       if (debouncedFilterSrcIp && p.ip_src?.[0] && !p.ip_src[0].includes(debouncedFilterSrcIp)) return false;
       if (debouncedFilterDstIp && p.ip_dst?.[0] && !p.ip_dst[0].includes(debouncedFilterDstIp)) return false;

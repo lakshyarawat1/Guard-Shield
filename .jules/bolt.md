@@ -18,9 +18,34 @@
 **Learning:** Found an inline `.filter` array operation running on a large dataset (alerts) inside the React render cycle in `Monitoring.tsx`. This caused O(N) operations on every render, severely impacting performance for large amounts of alerts.
 **Action:** Use `useMemo` and derive metrics (like counts) from pre-existing memoized grouped data structures where possible to change O(N) operations into O(1) lookups.
 
+## 2024-05-18 - [SQLite Subquery Performance]
+**Learning:** Using `NOT IN` with a large subquery result (`SELECT id FROM packets ORDER BY id DESC LIMIT 10000`) forces SQLite to scan checking against the large list, resulting in O(N) performance that degrades significantly as the table grows (~16ms in test with 25k rows).
+**Action:** Replace `id NOT IN (subquery)` with `id <= (SELECT id FROM packets ORDER BY id DESC LIMIT 1 OFFSET 10000)`. The `OFFSET` approach computes a single threshold value in O(log N) time, making the deletion over 40x faster (~0.4ms) and preventing the database bottleneck as traffic increases.
+## 2025-02-28 - Unthrottled State Updates with Large Datasets
+**Learning:** Found a critical performance bottleneck in `LiveTraffic.tsx` where high-frequency events (up to 10 emits/sec from Tauri backend) updated the component state immediately. Because the state contained a large array (up to 10,000 items) that was subsequently filtered and sorted (O(N log N)), updating the state 10 times a second crippled the main thread and caused high CPU usage.
+**Action:** Always buffer and throttle React state updates for high-frequency events (like websockets or IPC listeners) when dealing with large datasets or heavy derived state calculations. A throttle of 500ms (2fps) keeps the UI feeling real-time while drastically reducing main thread blocking.
 ## 2026-06-30 - Missing Debounce on Rapid Input Triggers Expensive Array Operations
 **Learning:** In `LiveTraffic.tsx`, state updates from typing in text fields directly triggered a `useMemo` filtering large arrays (up to 10,000 items). While the list rendering was virtualized, the upstream data operations still blocked the main thread on every keystroke, leading to severe input lag.
 **Action:** When filtering large collections based on text input, always decouple the raw input state from the filter logic dependency by introducing a debounced state to ensure O(N) operations only run once typing pauses.
 ## 2023-10-25 - Buffer high-frequency async events before React state updates
 **Learning:** In `LiveTraffic.tsx`, directly pushing high-frequency Tauri `listen` events (e.g. `packets-batch`) to React state causes excessive synchronous re-renders, blocking the main thread and triggering O(N) filtering/sorting cycles constantly.
 **Action:** Always buffer incoming payloads from high-frequency events into a mutable `useRef` array and flush them to React state periodically using `setInterval` to batch updates and improve UI responsiveness. Maintain state updater purity.
+## 2025-02-28 - Buffer high-frequency async events from Tauri
+**Learning:** In `LiveTraffic.tsx`, directly calling `setPackets` synchronously on every incoming batch from the `listen` Tauri event causes excessive React re-renders, especially under high network load.
+**Action:** Use a mutable `useRef` array to buffer incoming asynchronous events (like `listen` payloads) and flush the buffer to React state on a fixed `setInterval` (e.g. 1000ms).
+## 2025-02-28 - Strict Purity in React State Updater Functions
+**Learning:** Found a critical bug where React state updater functions (e.g., `setPackets(prev => {...})`) were mutating arrays inside the callback (using `.reverse()`). With React's Strict Mode, state updaters are double-invoked in development, which causes erratic behavior if they are not strictly pure.
+**Action:** Never mutate arrays (e.g. using `.reverse()`), buffers, refs, or external variables inside state updater functions. Explicitly copy arrays via slice and perform all mutations/clearing of external variables immediately before calling the state updater.
+## 2024-07-25 - React Ref Memory Explosion
+
+**Learning:** Buffering Tauri events into a `useRef` array without bounding its size can cause severe memory spikes (OOM errors) if the flush interval (e.g., `setInterval`) is delayed by the main thread during high-traffic spikes.
+**Action:** Always cap the size of the buffer ref (e.g., `bufferRef.current.slice(0, 20000)`) *before* flushing it to state to prevent memory explosion during extreme load.
+## 2025-02-28 - Unnecessary array spreading in high-frequency events
+**Learning:** Found an anti-pattern in `LiveTraffic.tsx` where an array was spread inside a high frequency event listener `packetBuffer = [...event.payload.reverse(), ...packetBuffer];` which causes high CPU load.
+**Action:** When handling high-frequency network events (like packet batching) in the React frontend, buffer incoming payloads into a mutable `useRef` array using `.push(...)` (avoiding O(N^2) array spreading).
+## 2024-05-18 - Avoid O(N^2) Array Spread in React Event Listeners
+**Learning:** In high-frequency Tauri event listeners (like live network traffic), using array spread syntax (`[...new, ...old]`) directly inside the listener callback degrades to O(N^2) time complexity and causes UI freezing before debounced state updates trigger.
+**Action:** Always append high-frequency event payloads to a mutable `useRef` array using `.push(...)`, maintain strict bounds with `.slice`, and only perform array spread/copy operations periodically inside a flushing `setInterval` to batch state updates.
+## 2025-06-25 - Unthrottled State Updates on Monitoring Dashboard
+**Learning:** High-frequency backend events (like `intrusion-alert`) that directly update state triggering heavy O(N) filtering operations (`useMemo` arrays) cause the main React thread to lock up.
+**Action:** When a listener emits data rapidly and the resulting UI operation is heavy, buffer the events locally using a `useRef` array and dispatch updates via `setInterval` to batch them. This prevents main thread blockage.
