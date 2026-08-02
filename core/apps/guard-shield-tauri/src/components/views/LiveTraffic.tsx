@@ -132,6 +132,8 @@ export default function LiveTraffic() {
     fetchInterfacesAndHistory();
   }, []);
 
+  const packetBufferRef = useRef<PacketType[]>([]);
+
   useEffect(() => {
     let unlisten: () => void;
     let intervalId: ReturnType<typeof setInterval>;
@@ -192,6 +194,25 @@ export default function LiveTraffic() {
     };
 
     setupCapture();
+
+    // ⚡ Bolt: Buffer high-frequency async events and flush them periodically to avoid
+    // blocking the main thread and Strict Mode mutation bugs with arrays
+    const flushInterval = setInterval(() => {
+      if (packetBufferRef.current.length > 0) {
+        // Copy the buffer and clear it immediately
+        const bufferedPackets = packetBufferRef.current.slice();
+        packetBufferRef.current = [];
+
+        // Reverse outside the state updater to keep the updater pure
+        const reversedBatch = bufferedPackets.reverse();
+
+        setPackets((prev) => {
+          // Keep last 10000 packets for performance
+          const newPackets = [...reversedBatch, ...prev];
+          return newPackets.slice(0, 10000);
+        });
+      }
+    }, 1000);
 
     return () => {
       isMounted = false;
