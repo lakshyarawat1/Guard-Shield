@@ -75,6 +75,9 @@ export default function LiveTraffic() {
   const [error, setError] = useState<string | null>(null);
   const bufferRef = useRef<PacketType[]>([]);
 
+  // ⚡ Bolt: Buffer incoming packets to avoid high-frequency renders
+  const packetBufferRef = useRef<PacketType[]>([]);
+
   const handleBlockIp = async (ip: string) => {
     try {
       await invoke("block_ip", { ip, reason: "Manual Block from Live Traffic" });
@@ -133,6 +136,21 @@ export default function LiveTraffic() {
     let unlisten: () => void;
     let intervalId: ReturnType<typeof setInterval>;
     let isMounted = true;
+
+    // ⚡ Bolt: Interval to flush packet buffer to state periodically
+    // This batches updates and prevents excessive synchronous re-renders.
+    const flushInterval = setInterval(() => {
+      if (packetBufferRef.current.length > 0) {
+        // Prepare the new items pure from state
+        const newItems = [...packetBufferRef.current].reverse();
+        packetBufferRef.current = [];
+
+        setPackets((prev) => {
+          const newPackets = [...newItems, ...prev];
+          return newPackets.slice(0, 10000);
+        });
+      }
+    }, 1000);
 
     const setupCapture = async () => {
       try {
