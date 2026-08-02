@@ -6,7 +6,7 @@ use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::os::windows::io::AsRawSocket;
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{atomic::AtomicBool, Arc};
 use windows_sys::Win32::Networking::WinSock::{WSAIoctl, SIO_RCVALL, SOCKET};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -72,28 +72,52 @@ fn get_service(port: u16) -> &'static str {
 
 fn format_flags(flags: u16) -> String {
     let mut f = Vec::new();
-    if flags & 0x01 != 0 { f.push("FIN"); }
-    if flags & 0x02 != 0 { f.push("SYN"); }
-    if flags & 0x04 != 0 { f.push("RST"); }
-    if flags & 0x08 != 0 { f.push("PSH"); }
-    if flags & 0x10 != 0 { f.push("ACK"); }
-    if flags & 0x20 != 0 { f.push("URG"); }
+    if flags & 0x01 != 0 {
+        f.push("FIN");
+    }
+    if flags & 0x02 != 0 {
+        f.push("SYN");
+    }
+    if flags & 0x04 != 0 {
+        f.push("RST");
+    }
+    if flags & 0x08 != 0 {
+        f.push("PSH");
+    }
+    if flags & 0x10 != 0 {
+        f.push("ACK");
+    }
+    if flags & 0x20 != 0 {
+        f.push("URG");
+    }
     if f.is_empty() {
         return format!("0x{:03x}", flags);
     }
     format!("{} (0x{:03x})", f.join(","), flags)
 }
 
-pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<PacketData>, run_flag: Arc<AtomicBool>) -> Result<(), String> {
-    let ip: Ipv4Addr = interface_ip.parse().map_err(|_| format!("Invalid interface IP: {}", interface_ip))?;
+pub fn start_capture(
+    interface_ip: String,
+    _bpf_filter: String,
+    sender: Sender<PacketData>,
+    run_flag: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let ip: Ipv4Addr = interface_ip
+        .parse()
+        .map_err(|_| format!("Invalid interface IP: {}", interface_ip))?;
 
     // Create raw socket
-    let socket = Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::from(0)))
-        .map_err(|e| format!("Failed to create raw socket (Administrator privileges required): {}", e))?;
+    let socket = Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::from(0))).map_err(|e| {
+        format!(
+            "Failed to create raw socket (Administrator privileges required): {}",
+            e
+        )
+    })?;
 
     // Bind to the interface IP
     let addr = SocketAddrV4::new(ip, 0);
-    socket.bind(&SocketAddr::V4(addr).into())
+    socket
+        .bind(&SocketAddr::V4(addr).into())
         .map_err(|e| format!("Failed to bind to {}: {}", ip, e))?;
 
     // Set SIO_RCVALL
@@ -115,12 +139,16 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
         );
         if res != 0 {
             let err = std::io::Error::last_os_error();
-            return Err(format!("WSAIoctl SIO_RCVALL failed: {}. Admin privileges are usually required.", err));
+            return Err(format!(
+                "WSAIoctl SIO_RCVALL failed: {}. Admin privileges are usually required.",
+                err
+            ));
         }
     }
 
     // Set a timeout so we can periodically check the run_flag
-    socket.set_read_timeout(Some(std::time::Duration::from_millis(500)))
+    socket
+        .set_read_timeout(Some(std::time::Duration::from_millis(500)))
         .map_err(|e| format!("Failed to set read timeout: {}", e))?;
 
     std::thread::spawn(move || {
@@ -195,22 +223,35 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                                         p_data.tcp_srcport = vec![src_port.to_string()];
                                         p_data.tcp_dstport = vec![dst_port.to_string()];
                                         p_data.tcp_flags = vec![format_flags(flags)];
-                                        
+
                                         let srv_src = get_service(src_port);
                                         let srv_dst = get_service(dst_port);
-                                        let srv = if !srv_dst.is_empty() { srv_dst } else if !srv_src.is_empty() { srv_src } else { "" };
-                                        
-                                        let info = if srv.is_empty() {
-                                            format!("TCP {} -> {} [{}] Seq=...", src_port, dst_port, p_data.tcp_flags[0])
+                                        let srv = if !srv_dst.is_empty() {
+                                            srv_dst
+                                        } else if !srv_src.is_empty() {
+                                            srv_src
                                         } else {
-                                            format!("{} (TCP {} -> {}) [{}]", srv, src_port, dst_port, p_data.tcp_flags[0])
+                                            ""
+                                        };
+
+                                        let info = if srv.is_empty() {
+                                            format!(
+                                                "TCP {} -> {} [{}] Seq=...",
+                                                src_port, dst_port, p_data.tcp_flags[0]
+                                            )
+                                        } else {
+                                            format!(
+                                                "{} (TCP {} -> {}) [{}]",
+                                                srv, src_port, dst_port, p_data.tcp_flags[0]
+                                            )
                                         };
                                         p_data._ws_col_info = vec![info];
 
                                         let data_offset = ((payload[12] >> 4) * 4) as usize;
                                         if payload.len() > data_offset {
                                             let l7_bytes = &payload[data_offset..];
-                                            let text = String::from_utf8_lossy(l7_bytes).to_string();
+                                            let text =
+                                                String::from_utf8_lossy(l7_bytes).to_string();
                                             // Optional: remove null bytes for cleaner DB/JSON
                                             p_data.payload = vec![text.replace('\0', ".")];
                                         } else {
@@ -229,13 +270,24 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
 
                                         p_data.udp_srcport = vec![src_port.to_string()];
                                         p_data.udp_dstport = vec![dst_port.to_string()];
-                                        
+
                                         let srv_src = get_service(src_port);
                                         let srv_dst = get_service(dst_port);
-                                        let srv = if !srv_dst.is_empty() { srv_dst } else if !srv_src.is_empty() { srv_src } else { "" };
-                                        
+                                        let srv = if !srv_dst.is_empty() {
+                                            srv_dst
+                                        } else if !srv_src.is_empty() {
+                                            srv_src
+                                        } else {
+                                            ""
+                                        };
+
                                         let info = if srv.is_empty() {
-                                            format!("UDP {} -> {} Len={}", src_port, dst_port, payload.len() - 8)
+                                            format!(
+                                                "UDP {} -> {} Len={}",
+                                                src_port,
+                                                dst_port,
+                                                payload.len() - 8
+                                            )
                                         } else {
                                             format!("{} (UDP {} -> {})", srv, src_port, dst_port)
                                         };
@@ -243,7 +295,8 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
 
                                         if payload.len() > 8 {
                                             let l7_bytes = &payload[8..];
-                                            let text = String::from_utf8_lossy(l7_bytes).to_string();
+                                            let text =
+                                                String::from_utf8_lossy(l7_bytes).to_string();
                                             p_data.payload = vec![text.replace('\0', ".")];
                                         } else {
                                             p_data.payload = vec!["".to_string()];
@@ -266,7 +319,10 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                                             11 => "Time Exceeded",
                                             _ => "Unknown",
                                         };
-                                        p_data._ws_col_info = vec![format!("ICMP {} (Type: {}, Code: {})", type_str, icmp_type, icmp_code)];
+                                        p_data._ws_col_info = vec![format!(
+                                            "ICMP {} (Type: {}, Code: {})",
+                                            type_str, icmp_type, icmp_code
+                                        )];
                                     } else {
                                         p_data._ws_col_info = vec!["ICMP packet".to_string()];
                                     }
@@ -285,7 +341,10 @@ pub fn start_capture(interface_ip: String, _bpf_filter: String, sender: Sender<P
                     }
                 }
                 Ok(_) => continue,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
                     continue; // Timeout hit, loop around to check run_flag
                 }
                 Err(e) => {

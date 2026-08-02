@@ -65,7 +65,7 @@ const Infobar = () => {
       setIpToBlock("");
       setQuickBlockOpen(false);
     } catch (e) {
-      toast.error(`Failed to block IP: ${ipToBlock}`, { description: String(e) });
+      toast.error(`Failed to block IP: ${ipToBlock}`, { description: "An internal error occurred." });
     }
   };
 
@@ -143,7 +143,7 @@ const Infobar = () => {
       await writeTextFile(filePath, content);
       toast.success(`Exported ${alerts.length} records to ${filePath}`);
     } catch (e) {
-      toast.error("Export failed", { description: String(e) });
+      toast.error("Export failed", { description: "An internal error occurred." });
     }
   };
 
@@ -158,7 +158,7 @@ const Infobar = () => {
         toast.success(`Snapshot saved successfully to ${filePath}`);
       }
     } catch (e) {
-      toast.error("Failed to save snapshot", { description: String(e) });
+      toast.error("Failed to save snapshot", { description: "An internal error occurred." });
     }
   };
 
@@ -174,7 +174,7 @@ const Infobar = () => {
         toast.success("Snapshot restored successfully. App is restarting...");
       }
     } catch (e) {
-      toast.error("Failed to restore snapshot", { description: String(e) });
+      toast.error("Failed to restore snapshot", { description: "An internal error occurred." });
     }
   };
 
@@ -198,7 +198,7 @@ const Infobar = () => {
       await writeFile(filePath, uint8Array);
       toast.success(`PDF Report saved successfully`, { id: "pdf-gen" });
     } catch (e) {
-      toast.error("Failed to generate PDF", { id: "pdf-gen", description: String(e) });
+      toast.error("Failed to generate PDF", { id: "pdf-gen", description: "An internal error occurred." });
     }
   };
 
@@ -209,7 +209,7 @@ const Infobar = () => {
       toast.success("Database cleared successfully", { id: "clear-db" });
       window.location.reload();
     } catch (e) {
-      toast.error("Failed to clear database", { id: "clear-db", description: String(e) });
+      toast.error("Failed to clear database", { id: "clear-db", description: "An internal error occurred." });
     }
   };
 

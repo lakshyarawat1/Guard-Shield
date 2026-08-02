@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Header } from "./Header";
@@ -45,6 +45,9 @@ export default function AnalyticsDashboard() {
   const isFilled = localStorage.getItem("guard_shield_chart_filled") !== "false";
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [stats, setStats] = useState<TelemetryStats>({ total_alerts: 0, last_24h_alerts: 0 });
+
+  // ⚡ Bolt: Buffer incoming events to prevent synchronous React state updates on every event
+  const alertBufferRef = useRef<AlertData[]>([]);
   const [timeRangeStr, setTimeRangeStr] = useState<string>("5m");
   const timeRangeMs = useMemo(() => {
     if (timeRangeStr === "1m") return 60 * 1000;
@@ -85,11 +88,7 @@ export default function AnalyticsDashboard() {
     const setupListener = async () => {
       unlistenFn = await listen<AlertData>("intrusion-alert", (event) => {
         alertCountInSec += 1;
-        setAlerts((prev) => [event.payload, ...prev].slice(0, 1000));
-        setStats((prev) => ({
-          total_alerts: prev.total_alerts + 1,
-          last_24h_alerts: prev.last_24h_alerts + 1
-        }));
+        alertBufferRef.current.push(event.payload);
       });
       unlistenPackets = await listen<any[]>("packets-batch", (event) => {
         packetCountInSec += event.payload.length;
@@ -99,6 +98,17 @@ export default function AnalyticsDashboard() {
 
     const interval = setInterval(() => {
       const now = Date.now();
+
+      // Flush buffered alerts to React state
+      if (alertBufferRef.current.length > 0) {
+        const newAlerts = alertBufferRef.current.splice(0, alertBufferRef.current.length).reverse();
+        setAlerts(prev => [...newAlerts, ...prev].slice(0, 1000));
+        setStats(prev => ({
+          total_alerts: prev.total_alerts + newAlerts.length,
+          last_24h_alerts: prev.last_24h_alerts + newAlerts.length
+        }));
+      }
+
       setTrafficHistory(prev => {
         const next = [...prev, { time: now, pkts: packetCountInSec, alerts: alertCountInSec }];
         packetCountInSec = 0;
@@ -159,10 +169,12 @@ export default function AnalyticsDashboard() {
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
   }, [alerts]);
 
-  // ⚡ Bolt Optimization: Memoize criticalCount calculation to prevent unnecessary O(n) array filter on every render.
+  // ⚡ Bolt Optimization: Derive criticalCount from the already memoized severityData array.
+  // This turns an O(N) filter operation over the large alerts array into an O(1) lookup on the small severityData array.
   const criticalCount = useMemo(() => {
-    return alerts.filter(a => a.severity === "Critical").length;
-  }, [alerts]);
+    const criticalData = severityData.find(s => s.name === "Critical");
+    return criticalData ? criticalData.value : 0;
+  }, [severityData]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
